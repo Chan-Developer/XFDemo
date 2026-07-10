@@ -18,6 +18,8 @@ from zoneinfo import ZoneInfo
 
 from flask import Flask, Response, jsonify, request, send_file, stream_with_context
 
+from backend.api.pipes import pipes_bp
+
 from backend.inspection import (
     get_agent,
     get_settings,
@@ -31,6 +33,7 @@ from backend.inspection import (
 
 
 app = Flask(__name__)
+app.register_blueprint(pipes_bp)
 
 DATASET_ROOT = Path("/data/clj/data/xfLLM").resolve()
 ULTRA_STRICT_DIR = DATASET_ROOT / "training_data" / "20260630_hydrant_auto_visible_reasoning_v5_ultra_strict_cleaned"

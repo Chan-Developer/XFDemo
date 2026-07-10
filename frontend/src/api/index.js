@@ -193,6 +193,34 @@ export const clearInspectionHistory = () => {
   return api.delete(`/history/inspections`)
 }
 
+export const checkPipesHealth = () => {
+  return api.get('/pipes/health')
+}
+
+export const countPipes = ({ image, confidence, iou = 0.45, classes = [0, 1, 2, 3] }) => {
+  return api.post('/pipes/count', {
+    image,
+    confidence,
+    iou,
+    classes,
+    imageSize: 640,
+    maxDetections: 2000
+  })
+}
+
+export const fetchPipeHistory = async (limit = 12) => {
+  const payload = await api.get(`/pipes/history?limit=${encodeURIComponent(limit)}`)
+  return normalizeRecordMedia(payload)
+}
+
+export const deletePipeHistory = (id) => {
+  return api.delete(`/pipes/history/${encodeURIComponent(id)}`)
+}
+
+export const clearPipeHistory = () => {
+  return api.delete('/pipes/history')
+}
+
 export const fetchInspectionMonitor = async (params = {}) => {
   const payload = await api.get(`/monitor/inspection-stats?${buildSearch(params)}`)
   return normalizeRecordMedia({ ...payload, records: payload.recent || [] })

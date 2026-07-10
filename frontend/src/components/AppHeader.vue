@@ -20,6 +20,7 @@ onUnmounted(() => {
 const navItems = [
   { path: '/', label: '首页' },
   { path: '/inspect', label: '智能检测' },
+  { path: '/pipes-counting', label: '型材计数' },
   { path: '/history', label: '\u68c0\u6d4b\u5386\u53f2' },
   { path: '/dataset', label: '\u6570\u636e\u96c6' },
   { path: '/knowledge-graph', label: '\u77e5\u8bc6\u56fe\u8c31' },

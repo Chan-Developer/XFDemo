@@ -12,6 +12,11 @@ const routes = [
     component: () => import('@/views/InspectView.vue')
   },
   {
+    path: '/pipes-counting',
+    name: 'PipesCounting',
+    component: () => import('@/views/PipesCountingView.vue')
+  },
+  {
     path: '/dataset',
     name: 'Dataset',
     component: () => import('@/views/DatasetView.vue')

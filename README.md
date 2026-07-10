@@ -10,6 +10,7 @@ backend/inspection_modules/ Prompt、解析、复核、后处理与报告格式�
 frontend/                   Vue 前端
 agent_reference/            内部与外观合规参考图
 scripts/yolo_infer.py       YOLO 推理入口
+services/pipes_counting/    型材计数常驻推理服务
 data_pipeline/              数据扫描与统计脚本
 examples/                   示例图片
 ```
@@ -36,6 +37,8 @@ qwen3vl8b_hydrant_v5_full_pos_balanced_3to1_checkpoint600_merged_20260701
 
 当前 YOLO 类别：手轮、接口、控制器、栓体、水带、水枪、软管、阀门，默认置信度阈值为 `0.20`。
 
+型材计数模型作为独立服务运行，类别为圆管、方管、角钢和槽钢。XFDemo 后端通过 `PIPE_COUNTING_BASE_URL` 调用该服务，浏览器不直接访问模型端口。
+
 ## 本地启动
 
 准备环境变量：
@@ -48,6 +51,13 @@ cp .env.example .env
 
 ```bash
 python -m backend.app
+```
+
+启动型材计数服务：
+
+```bash
+PIPES_DEVICE=2 gunicorn --bind 127.0.0.1:9400 --workers 1 --threads 2 \
+  --timeout 180 services.pipes_counting.app:app
 ```
 
 启动前端：
