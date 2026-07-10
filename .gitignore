@@ -1,0 +1,51 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+deploy/.env*
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv*/
+venv/
+
+# Node / frontend build
+frontend/node_modules/
+frontend/dist/
+node_modules/
+dist/
+
+# Runtime and generated data
+logs/
+*.log
+*.pid
+data_pipeline/output/
+backend/yolo_tmp/
+
+# Models, datasets and deployment bundles
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.tar
+*.tar.gz
+*.zip
+
+# Historical deployment scripts not used by the active L40 backend
+deploy/
+frontend/scripts/
+scripts/deploy_remote.sh
+scripts/package_stack.sh
+scripts/upload_deploy.sh
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.bak
+*.bak-*
+
