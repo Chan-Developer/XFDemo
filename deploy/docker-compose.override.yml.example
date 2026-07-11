@@ -1,0 +1,7 @@
+services:
+  xf-backend:
+    # Enable hot-edit prompt.py on the host.
+    # Put a prompt.py next to docker-compose.yml, then restart backend to apply changes.
+    volumes:
+      - "./prompt.py:/app/prompt.py:ro"
+

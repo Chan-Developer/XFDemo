@@ -1,0 +1,2 @@
+"""PipesCounting inference service."""
+

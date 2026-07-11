@@ -1,0 +1,47 @@
+# Runtime and dependency outputs
+__pycache__/
+*.py[cod]
+*.log
+*.pid
+*.sqlite
+*.db
+.venv*/
+.venv-langgraph/
+node_modules/
+dist/
+frontend/node_modules/
+frontend/dist/
+
+# Secrets and local deploy state
+.env
+.env.*
+deploy/.env
+deploy/.env.*
+*.pem
+*.key
+*.crt
+
+# Generated logs, histories, temp files
+logs/
+backend_runtime.log
+frontend_runtime.log
+uploads/
+tmp/
+.cache/
+
+# Generated packages and model/data outputs
+*.tar
+*.tar.gz
+*.zip
+deploy/*.tar
+data_pipeline/output/
+Research/attention_outputs/
+
+# Local backups created during iteration
+backups/
+*.bak-*
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
