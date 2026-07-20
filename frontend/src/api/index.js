@@ -193,6 +193,18 @@ export const clearInspectionHistory = () => {
   return api.delete(`/history/inspections`)
 }
 
+export const fetchInspectionReviews = (recordId) => {
+  return api.get(`/history/inspections/${encodeURIComponent(recordId)}/reviews`)
+}
+
+export const createInspectionReview = (recordId, payload) => {
+  return api.post(`/history/inspections/${encodeURIComponent(recordId)}/reviews`, payload)
+}
+
+export const deleteInspectionReview = (reviewId) => {
+  return api.delete(`/history/reviews/${encodeURIComponent(reviewId)}`)
+}
+
 export const checkPipesHealth = () => {
   return api.get('/pipes/health')
 }

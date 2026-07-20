@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
-import { clearInspectionHistory, deleteInspectionHistory, fetchInspectionHistory } from '@/api'
+import { ChevronDown, ClipboardCheck, FileText, Workflow } from 'lucide-vue-next'
+import { clearInspectionHistory, createInspectionReview, deleteInspectionHistory, deleteInspectionReview, fetchInspectionHistory } from '@/api'
 
 const ui = {
   title: '\u68c0\u6d4b\u5386\u53f2',
@@ -36,7 +37,39 @@ const ui = {
   lastPage: '\u672b\u9875',
   delete: '\u5220\u9664',
   deleteConfirm: '\u786e\u5b9a\u5220\u9664\u8fd9\u6761\u68c0\u6d4b\u5386\u53f2\u5417\uff1f',
-  deleting: '\u5220\u9664\u4e2d...'
+  deleting: '\u5220\u9664\u4e2d...',
+  reviewTitle: '\u4eba\u5de5\u590d\u6838',
+  reviewSubtitle: '\u8bb0\u5f55\u4eba\u5de5\u5bf9\u6a21\u578b\u7ed3\u8bba\u7684\u8ba4\u53ef\u4e0e\u4fee\u6b63\uff0c\u4fbf\u4e8e\u540e\u7eed\u6392\u67e5\u95ee\u9898\u6765\u6e90',
+  reviewNone: '\u6682\u65e0\u590d\u6838\u8bb0\u5f55',
+  reviewCount: '\u6761\u590d\u6838',
+  reviewLatest: '\u6700\u65b0\u590d\u6838',
+  reviewAccept: '\u662f\u5426\u8ba4\u53ef\u6a21\u578b\u7ed3\u679c',
+  reviewAcceptUnknown: '\u672a\u9009\u62e9',
+  reviewAcceptYes: '\u8ba4\u53ef',
+  reviewAcceptNo: '\u4e0d\u8ba4\u53ef',
+  reviewCorrectedVerdict: '\u4fee\u6b63\u7ed3\u8bba',
+  reviewKeepVerdict: '\u4e0d\u4fee\u6b63',
+  reviewCorrectedLabels: '\u4fee\u6b63\u9690\u60a3\u6807\u7b7e',
+  reviewLabelsPlaceholder: '\u591a\u4e2a\u6807\u7b7e\u7528\u5206\u53f7\u6216\u6362\u884c\u5206\u9694',
+  reviewErrorSource: '\u95ee\u9898\u6765\u6e90',
+  reviewSourceUnknown: '\u672a\u5224\u5b9a',
+  reviewSourceQwen: 'QwenVL \u521d\u68c0',
+  reviewSourceYolo: 'YOLO \u68c0\u6d4b',
+  reviewSourceJudge: '\u4e8c\u6b21\u590d\u6838',
+  reviewSourcePrompt: '\u63d0\u793a\u8bcd',
+  reviewSourceData: '\u6570\u636e\u6807\u6ce8',
+  reviewSourceOther: '\u5176\u4ed6',
+  reviewComment: '\u590d\u6838\u8bf4\u660e',
+  reviewCommentPlaceholder: '\u5199\u660e\u4eba\u5de5\u5224\u65ad\u4f9d\u636e\uff0c\u4f8b\u5982\u56fe\u4e2d\u53ef\u89c1\u6c34\u67aa\uff0c\u6a21\u578b\u8bef\u5224\u4e3a\u7f3a\u5931',
+  reviewSubmit: '\u4fdd\u5b58\u590d\u6838',
+  reviewSubmitting: '\u4fdd\u5b58\u4e2d...',
+  reviewDeleteConfirm: '\u786e\u5b9a\u5220\u9664\u8fd9\u6761\u590d\u6838\u8bb0\u5f55\u5417\uff1f',
+  reviewModelVerdict: '\u6a21\u578b\u7ed3\u8bba',
+  reviewHumanVerdict: '\u4eba\u5de5\u590d\u6838',
+  reviewNoComment: '\u672a\u586b\u5199\u590d\u6838\u8bf4\u660e',
+  traceTitle: '\u63a8\u7406\u94fe\u8def',
+  traceHint: 'QwenVL \u00b7 YOLO \u00b7 \u590d\u6838',
+  reportHint: '\u7ed3\u8bba\u4e0e\u5b8c\u6574\u8bf4\u660e'
 }
 const filters = ref({ verdict: '', q: '' })
 const page = ref(1)
@@ -48,6 +81,9 @@ const selectedImage = ref(null)
 const deletingId = ref('')
 const clearingAll = ref(false)
 const failedImages = ref(new Set())
+const reviewForms = ref({})
+const reviewSubmittingId = ref('')
+const reviewDeletingId = ref('')
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -92,10 +128,11 @@ const labelsOf = (record) => record.labels?.length ? record.labels : [ui.noLabel
 const traceStagesOf = (record) => record.trace?.stages || []
 const traceIssuesOf = (record) => record.trace?.summary?.issues || []
 const formatDuration = (value) => `${Number(value || 0)}ms`
-const stageStatusText = (status) => {
-  if (status === 'warn') return '\u63d0\u9192'
-  if (status === 'error') return '\u5f02\u5e38'
-  if (status === 'skipped') return '\u8df3\u8fc7'
+const stageStatusText = (stage) => {
+  if (stage?.superseded) return '\u5df2\u4f5c\u5e9f'
+  if (stage?.status === 'warn') return '\u63d0\u9192'
+  if (stage?.status === 'error') return '\u5f02\u5e38'
+  if (stage?.status === 'skipped') return '\u8df3\u8fc7'
   return '\u6b63\u5e38'
 }
 const stageMainText = (stage) => {
@@ -103,8 +140,9 @@ const stageMainText = (stage) => {
     const output = stage.output || {}
     return `${output.verdict || '\u672a\u89e3\u6790\u7ed3\u8bba'} / ${(output.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
   }
-  if (stage.name === 'yolo_internal') {
-    return `\u5019\u9009\u6846 ${stage.detectionCount || 0} \u4e2a / ${(stage.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
+  if (String(stage.name || '').startsWith('yolo_')) {
+    const summary = `\u5019\u9009\u6846 ${stage.detectionCount || 0} \u4e2a / ${(stage.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
+    return stage.superseded ? `\u65e7\u8303\u56f4\u7ed3\u679c\uff1a${summary}\uff1b\u4e0d\u53c2\u4e0e\u6700\u7ec8\u7ed3\u8bba` : summary
   }
   const output = stage.output || {}
   return `${output.verdict || '\u672a\u89e3\u6790\u7ed3\u8bba'} / ${(output.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
@@ -175,6 +213,100 @@ const markImageFailed = (url) => {
 const canShowImage = (record) => {
   const url = previewUrlOf(record)
   return Boolean(url && !failedImages.value.has(url))
+}
+
+const emptyReviewForm = () => ({
+  acceptance: '',
+  correctedVerdict: '',
+  correctedLabels: '',
+  errorSource: '',
+  comment: ''
+})
+
+const reviewFormOf = (record) => {
+  const id = record?.id || ''
+  if (!id) return emptyReviewForm()
+  if (!reviewForms.value[id]) {
+    reviewForms.value = { ...reviewForms.value, [id]: emptyReviewForm() }
+  }
+  return reviewForms.value[id]
+}
+
+const reviewsOf = (record) => record?.reviews || []
+const latestReviewOf = (record) => reviewsOf(record)[0] || null
+const hasReviewCorrection = (record) => Boolean(latestReviewOf(record)?.correctedVerdict || latestReviewOf(record)?.correctedLabels?.length)
+const sourceTextOf = (source) => ({
+  qwen: ui.reviewSourceQwen,
+  yolo: ui.reviewSourceYolo,
+  judge: ui.reviewSourceJudge,
+  prompt: ui.reviewSourcePrompt,
+  data: ui.reviewSourceData,
+  other: ui.reviewSourceOther
+}[source] || ui.reviewSourceUnknown)
+const acceptTextOf = (review) => {
+  if (!review) return ui.reviewAcceptUnknown
+  if (review.acceptModelResult === true) return ui.reviewAcceptYes
+  if (review.acceptModelResult === false) return ui.reviewAcceptNo
+  return ui.reviewAcceptUnknown
+}
+const reviewHumanVerdictOf = (record) => {
+  const review = latestReviewOf(record)
+  if (!review) return ui.reviewAcceptUnknown
+  if (review.correctedVerdict) return review.correctedVerdict
+  return acceptTextOf(review)
+}
+const splitReviewLabels = (value) => String(value || '')
+  .split(/[\n;\uFF1B,\uFF0C]/)
+  .map((item) => item.trim())
+  .filter(Boolean)
+
+const syncRecordReviews = (record, reviews) => {
+  record.reviews = reviews
+  record.reviewSummary = {
+    count: reviews.length,
+    latest: reviews[0] || null,
+    hasCorrection: Boolean(reviews[0]?.correctedVerdict || reviews[0]?.correctedLabels?.length)
+  }
+}
+
+const submitReview = async (record) => {
+  if (!record?.id) return
+  const form = reviewFormOf(record)
+  if (!form.correctedVerdict && !form.correctedLabels.trim() && !form.comment.trim() && !form.errorSource && !form.acceptance) {
+    error.value = ui.reviewCommentPlaceholder
+    return
+  }
+  reviewSubmittingId.value = record.id
+  error.value = ''
+  try {
+    const review = await createInspectionReview(record.id, {
+      acceptModelResult: form.acceptance ? form.acceptance === 'yes' : null,
+      correctedVerdict: form.correctedVerdict,
+      correctedLabels: splitReviewLabels(form.correctedLabels),
+      errorSource: form.errorSource,
+      comment: form.comment
+    })
+    syncRecordReviews(record, [review, ...reviewsOf(record)])
+    reviewForms.value = { ...reviewForms.value, [record.id]: emptyReviewForm() }
+  } catch (err) {
+    error.value = err.message || 'save review failed'
+  } finally {
+    reviewSubmittingId.value = ''
+  }
+}
+
+const deleteReviewItem = async (record, review) => {
+  if (!review?.id || !window.confirm(ui.reviewDeleteConfirm)) return
+  reviewDeletingId.value = review.id
+  error.value = ''
+  try {
+    await deleteInspectionReview(review.id)
+    syncRecordReviews(record, reviewsOf(record).filter((item) => item.id !== review.id))
+  } catch (err) {
+    error.value = err.message || 'delete review failed'
+  } finally {
+    reviewDeletingId.value = ''
+  }
 }
 
 const deleteRecord = async (record) => {
@@ -315,9 +447,87 @@ onMounted(loadHistory)
               <div class="history-labels">
                 <span v-for="label in labelsOf(record)" :key="`${record.id}-${label}`">{{ label }}</span>
               </div>
+              <details class="history-review">
+                <summary class="history-action">
+                  <span class="history-action__icon"><ClipboardCheck :size="16" :stroke-width="2" /></span>
+                  <strong class="history-action__label">{{ ui.reviewTitle }}</strong>
+                  <span class="history-action__meta">
+                    {{ reviewsOf(record).length ? `${reviewsOf(record).length} ${ui.reviewCount}` : ui.reviewNone }}
+                  </span>
+                  <ChevronDown class="history-action__chevron" :size="16" :stroke-width="2" />
+                </summary>
+                <div class="history-review__body">
+                  <p class="history-review__subtitle">{{ ui.reviewSubtitle }}</p>
+                  <div v-if="latestReviewOf(record)" class="history-review__latest" :class="{ 'history-review__latest--changed': hasReviewCorrection(record) }">
+                    <span>{{ ui.reviewModelVerdict }}: {{ record.verdict || ui.unknown }}</span>
+                    <strong>{{ ui.reviewHumanVerdict }}: {{ reviewHumanVerdictOf(record) }}</strong>
+                  </div>
+                  <div v-if="reviewsOf(record).length" class="history-review__list">
+                    <article v-for="review in reviewsOf(record)" :key="review.id" class="history-review__item">
+                      <div>
+                        <strong>{{ review.correctedVerdict || acceptTextOf(review) }}</strong>
+                        <span>{{ review.createdText }} / {{ sourceTextOf(review.errorSource) }}</span>
+                      </div>
+                      <p>{{ review.comment || ui.reviewNoComment }}</p>
+                      <div v-if="review.correctedLabels?.length" class="history-review__labels">
+                        <span v-for="label in review.correctedLabels" :key="`${review.id}-${label}`">{{ label }}</span>
+                      </div>
+                      <button class="history-review__delete" type="button" :disabled="reviewDeletingId === review.id" @click="deleteReviewItem(record, review)">{{ ui.delete }}</button>
+                    </article>
+                  </div>
+                  <form class="history-review__form" @submit.prevent="submitReview(record)">
+                    <label>
+                      <span>{{ ui.reviewAccept }}</span>
+                      <select v-model="reviewFormOf(record).acceptance">
+                        <option value="">{{ ui.reviewAcceptUnknown }}</option>
+                        <option value="yes">{{ ui.reviewAcceptYes }}</option>
+                        <option value="no">{{ ui.reviewAcceptNo }}</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>{{ ui.reviewCorrectedVerdict }}</span>
+                      <select v-model="reviewFormOf(record).correctedVerdict">
+                        <option value="">{{ ui.reviewKeepVerdict }}</option>
+                        <option :value="ui.compliant">{{ ui.compliant }}</option>
+                        <option :value="ui.nonCompliant">{{ ui.nonCompliant }}</option>
+                        <option :value="ui.unknown">{{ ui.unknown }}</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>{{ ui.reviewErrorSource }}</span>
+                      <select v-model="reviewFormOf(record).errorSource">
+                        <option value="">{{ ui.reviewSourceUnknown }}</option>
+                        <option value="qwen">{{ ui.reviewSourceQwen }}</option>
+                        <option value="yolo">{{ ui.reviewSourceYolo }}</option>
+                        <option value="judge">{{ ui.reviewSourceJudge }}</option>
+                        <option value="prompt">{{ ui.reviewSourcePrompt }}</option>
+                        <option value="data">{{ ui.reviewSourceData }}</option>
+                        <option value="other">{{ ui.reviewSourceOther }}</option>
+                      </select>
+                    </label>
+                    <label class="history-review__wide">
+                      <span>{{ ui.reviewCorrectedLabels }}</span>
+                      <textarea v-model="reviewFormOf(record).correctedLabels" rows="2" :placeholder="ui.reviewLabelsPlaceholder"></textarea>
+                    </label>
+                    <label class="history-review__wide">
+                      <span>{{ ui.reviewComment }}</span>
+                      <textarea v-model="reviewFormOf(record).comment" rows="3" :placeholder="ui.reviewCommentPlaceholder"></textarea>
+                    </label>
+                    <button class="history-review__submit" type="submit" :disabled="reviewSubmittingId === record.id">
+                      {{ reviewSubmittingId === record.id ? ui.reviewSubmitting : ui.reviewSubmit }}
+                    </button>
+                  </form>
+                </div>
+              </details>
               <details class="history-trace">
-                <summary>{{ ui.trace }}</summary>
+                <summary class="history-action">
+                  <span class="history-action__icon"><Workflow :size="16" :stroke-width="2" /></span>
+                  <strong class="history-action__label">{{ ui.traceTitle }}</strong>
+                  <span class="history-action__meta">{{ ui.traceHint }}</span>
+                  <ChevronDown class="history-action__chevron" :size="16" :stroke-width="2" />
+                </summary>
                 <div v-if="traceStagesOf(record).length" class="history-trace__body">
+                  <p class="history-trace__note">&#x8fd9;&#x91cc;&#x8bb0;&#x5f55;&#x672c;&#x6b21;&#x68c0;&#x6d4b;&#x5404;&#x9636;&#x6bb5;&#x7684;&#x8017;&#x65f6;&#x3001;&#x72b6;&#x6001;&#x548c;&#x5173;&#x952e;&#x8f93;&#x51fa;&#xff0c;&#x7528;&#x6765;&#x6392;&#x67e5;&#x662f;&#x89c6;&#x89c9;&#x6a21;&#x578b;&#x3001;YOLO &#x8fd8;&#x662f;&#x590d;&#x6838;&#x73af;&#x8282;&#x5f71;&#x54cd;&#x4e86;&#x6700;&#x7ec8;&#x7ed3;&#x8bba;&#x3002;</p>
                   <div class="history-trace__summary">
                     <span>&#x603b;&#x8017;&#x65f6; {{ formatDuration(record.trace?.summary?.totalDurationMs) }}</span>
                     <span>&#x95ee;&#x9898; {{ traceIssuesOf(record).length }} &#x4e2a;</span>
@@ -329,7 +539,7 @@ onMounted(loadHistory)
                   >
                     <div>
                       <strong>{{ stage.title }}</strong>
-                      <span>{{ stageStatusText(stage.status) }} &middot; {{ formatDuration(stage.durationMs) }}</span>
+                      <span>{{ stageStatusText(stage) }} &middot; {{ formatDuration(stage.durationMs) }}</span>
                     </div>
                     <p>{{ stageMainText(stage) }}</p>
                   </div>
@@ -340,7 +550,12 @@ onMounted(loadHistory)
                 <p v-else class="history-trace__empty">{{ ui.traceEmpty }}</p>
               </details>
               <details class="history-report">
-                <summary>{{ ui.report }}</summary>
+                <summary class="history-action">
+                  <span class="history-action__icon"><FileText :size="16" :stroke-width="2" /></span>
+                  <strong class="history-action__label">{{ ui.report }}</strong>
+                  <span class="history-action__meta">{{ ui.reportHint }}</span>
+                  <ChevronDown class="history-action__chevron" :size="16" :stroke-width="2" />
+                </summary>
                 <div class="history-report__content markdown-body" v-html="reportHtml(record)"></div>
               </details>
             </div>
@@ -638,15 +853,251 @@ onMounted(loadHistory)
 }
 
 
-.history-trace {
+
+
+.history-review,
+.history-trace,
+.history-report {
   border-top: 1px solid var(--color-gray-100);
   padding-top: var(--spacing-sm);
 }
 
-.history-trace summary {
+.history-action {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
   cursor: pointer;
+  list-style: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  background: #fafafa;
   color: var(--text-primary);
-  font-weight: 600;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.history-action:hover,
+details[open] > .history-action {
+  border-color: rgba(239, 68, 68, 0.14);
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.05);
+}
+
+.history-action::-webkit-details-marker {
+  display: none;
+}
+
+.history-action__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(239, 68, 68, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-primary);
+}
+
+.history-action__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-action__meta {
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-action__chevron {
+  color: var(--text-tertiary);
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+
+details[open] > .history-action .history-action__chevron {
+  color: var(--color-primary);
+  transform: rotate(180deg);
+}
+
+.history-review__body {
+  display: grid;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.history-review__subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+}
+
+.history-review__latest,
+.history-review__item {
+  padding: 10px;
+  border: 1px solid var(--color-gray-100);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+
+.history-review__latest {
+  display: grid;
+  gap: 3px;
+  border-left: 3px solid var(--color-gray-300);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.history-review__latest--changed {
+  border-left-color: var(--color-primary);
+  background: #fffafa;
+}
+
+.history-review__latest strong {
+  color: var(--text-primary);
+}
+
+.history-review__list {
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.history-review__item {
+  position: relative;
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.history-review__item > div:first-child {
+  display: grid;
+  gap: 2px;
+  padding-right: 46px;
+}
+
+.history-review__item strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.history-review__item span,
+.history-review__item p {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+}
+
+.history-review__item p {
+  margin: 0;
+}
+
+.history-review__labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.history-review__labels span {
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-full);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-dark);
+  font-size: var(--font-size-xs);
+}
+
+.history-review__delete {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  color: var(--color-primary);
+  background: transparent;
+  font-size: var(--font-size-xs);
+}
+
+.history-review__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+  padding: 12px;
+  border: 1px solid var(--color-gray-100);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, #fff, #fffafa);
+}
+
+.history-review__form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  min-width: 0;
+}
+
+.history-review__form select,
+.history-review__form textarea {
+  width: 100%;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+  padding: 9px 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.history-review__form textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.history-review__form select:focus,
+.history-review__form textarea:focus {
+  outline: none;
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.08);
+}
+
+.history-review__wide,
+.history-review__submit {
+  grid-column: 1 / -1;
+}
+
+.history-review__submit {
+  min-height: 42px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.16);
+}
+
+.history-review__submit:disabled,
+.history-review__delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.history-trace__note {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  background: #fff7f7;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
 }
 
 .history-trace__body {
@@ -676,6 +1127,11 @@ onMounted(loadHistory)
 
 .history-trace__stage--error {
   border-left-color: var(--color-primary);
+}
+
+.history-trace__stage--skipped {
+  border-left-color: var(--color-gray-400);
+  background: var(--bg-tertiary);
 }
 
 .history-trace__stage > div {
@@ -708,17 +1164,6 @@ onMounted(loadHistory)
   background: #fff1f2;
   color: var(--color-primary-dark);
   font-size: var(--font-size-xs);
-}
-
-.history-report {
-  border-top: 1px solid var(--color-gray-100);
-  padding-top: var(--spacing-sm);
-}
-
-.history-report summary {
-  cursor: pointer;
-  color: var(--color-primary);
-  font-weight: 600;
 }
 
 .history-report__content {

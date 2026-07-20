@@ -1,1 +1,0 @@
-"""Modular inspection pipeline components."""

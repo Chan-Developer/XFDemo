@@ -27,6 +27,16 @@ const routes = [
     component: () => import('@/views/KnowledgeGraphView.vue')
   },
   {
+    path: '/regulations',
+    name: 'RegulationKnowledge',
+    component: () => import('@/views/RegulationKnowledgeView.vue')
+  },
+  {
+    path: '/multimodal-search',
+    name: 'MultimodalSearch',
+    component: () => import('@/views/MultimodalSearchView.vue')
+  },
+  {
     path: '/history',
     name: 'History',
     component: () => import('@/views/HistoryView.vue')

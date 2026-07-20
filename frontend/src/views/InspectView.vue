@@ -35,10 +35,11 @@ const formatConfidence = (value) => `${Math.round((Number(value) || 0) * 100)}%`
 const traceStages = computed(() => traceResult.value?.stages || [])
 const traceIssues = computed(() => traceResult.value?.summary?.issues || [])
 const formatDuration = (value) => `${Number(value || 0)}ms`
-const stageStatusText = (status) => {
-  if (status === 'warn') return '\u63d0\u9192'
-  if (status === 'error') return '\u5f02\u5e38'
-  if (status === 'skipped') return '\u8df3\u8fc7'
+const stageStatusText = (stage) => {
+  if (stage?.superseded) return '\u5df2\u4f5c\u5e9f'
+  if (stage?.status === 'warn') return '\u63d0\u9192'
+  if (stage?.status === 'error') return '\u5f02\u5e38'
+  if (stage?.status === 'skipped') return '\u8df3\u8fc7'
   return '\u6b63\u5e38'
 }
 const stageMainText = (stage) => {
@@ -46,8 +47,9 @@ const stageMainText = (stage) => {
     const output = stage.output || {}
     return `${output.verdict || '\u672a\u89e3\u6790\u7ed3\u8bba'} / ${(output.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
   }
-  if (stage.name === 'yolo_internal') {
-    return `\u5019\u9009\u6846 ${stage.detectionCount || 0} \u4e2a / ${(stage.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
+  if (String(stage.name || '').startsWith('yolo_')) {
+    const summary = `\u5019\u9009\u6846 ${stage.detectionCount || 0} \u4e2a / ${(stage.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
+    return stage.superseded ? `\u65e7\u8303\u56f4\u7ed3\u679c\uff1a${summary}\uff1b\u4e0d\u53c2\u4e0e\u6700\u7ec8\u7ed3\u8bba` : summary
   }
   const output = stage.output || {}
   return `${output.verdict || '\u672a\u89e3\u6790\u7ed3\u8bba'} / ${(output.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
@@ -151,7 +153,9 @@ const renderReportHtml = (text) => {
       const verdictMatch = title.match(/^检测结论：?(.+)?$/)
       const verdict = verdictMatch ? (verdictMatch[1] || '').trim() : ''
       const displayTitle = verdictMatch ? '检测结论' : title.replace(/：$/, '')
-      const badgeClass = verdict.includes('不合格') ? 'report-section__badge--bad' : 'report-section__badge--ok'
+      const badgeClass = verdict.includes('不合格')
+        ? 'report-section__badge--bad'
+        : (verdict.includes('无法判断') ? 'report-section__badge--unknown' : 'report-section__badge--ok')
       html.push(`
         <div class="report-section report-section--${meta.tone}">
           <span class="report-section__index">${meta.label}</span>
@@ -303,7 +307,7 @@ onBeforeUnmount(() => {
                   >
                     <div>
                       <strong>{{ stage.title }}</strong>
-                      <span>{{ stageStatusText(stage.status) }} &middot; {{ formatDuration(stage.durationMs) }}</span>
+                      <span>{{ stageStatusText(stage) }} &middot; {{ formatDuration(stage.durationMs) }}</span>
                     </div>
                     <p>{{ stageMainText(stage) }}</p>
                   </div>
@@ -628,6 +632,11 @@ onBeforeUnmount(() => {
 
 .inspect__trace-stage--error {
   border-left-color: var(--color-primary);
+}
+
+.inspect__trace-stage--skipped {
+  border-left-color: var(--color-gray-400);
+  background: var(--bg-tertiary);
 }
 
 .inspect__trace-stage p {

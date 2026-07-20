@@ -28,14 +28,20 @@ frontend_runtime.log
 uploads/
 tmp/
 .cache/
+runtime/
 
 # Generated packages and model/data outputs
 *.tar
 *.tar.gz
 *.zip
+*.pt
+*.pth
+*.ckpt
+*.onnx
 deploy/*.tar
 data_pipeline/output/
 Research/attention_outputs/
+artifacts/
 
 # Local backups created during iteration
 backups/
