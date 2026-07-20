@@ -1,121 +1,196 @@
-# XFDemo
+<p align="center">
+  <img src="docs/assets/xfdemo-hero.webp" alt="XFDemo indoor fire hydrant inspection" width="100%" />
+</p>
+
+<h1 align="center">XFDemo</h1>
 
 <p align="center">
-  <strong>面向消防设施巡检的可追溯多模态 AI 系统</strong><br />
-  Vision-Language Model + YOLO + 专项复核 + 确定性规则
+  <strong>让每一个 AI 结论，都能回到图像证据。</strong>
+</p>
+
+<p align="center">
+  Evidence-first multimodal fire-safety inspection<br />
+  VLM · YOLO · Specialist Review · Deterministic Harness · Human Feedback
 </p>
 
 <p align="center">
   <a href="https://github.com/Chan-Developer/XFDemo/stargazers">
-    <img src="https://img.shields.io/github/stars/Chan-Developer/XFDemo?style=flat-square&color=E53935" alt="GitHub Stars" />
+    <img src="https://img.shields.io/github/stars/Chan-Developer/XFDemo?style=for-the-badge&logo=github&label=STAR&color=E53935" alt="GitHub Stars" />
   </a>
   <a href="https://github.com/Chan-Developer/XFDemo/network/members">
-    <img src="https://img.shields.io/github/forks/Chan-Developer/XFDemo?style=flat-square" alt="GitHub Forks" />
+    <img src="https://img.shields.io/github/forks/Chan-Developer/XFDemo?style=for-the-badge&logo=github&label=FORK" alt="GitHub Forks" />
   </a>
   <a href="https://github.com/Chan-Developer/XFDemo/issues">
-    <img src="https://img.shields.io/github/issues/Chan-Developer/XFDemo?style=flat-square" alt="GitHub Issues" />
+    <img src="https://img.shields.io/github/issues/Chan-Developer/XFDemo?style=for-the-badge&logo=github&label=ISSUES" alt="GitHub Issues" />
   </a>
-  <img src="https://img.shields.io/badge/Vue-3-42b883?style=flat-square" alt="Vue 3" />
-  <img src="https://img.shields.io/badge/Flask-API-111111?style=flat-square" alt="Flask API" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Vue_3-42B883?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3" />
+  <img src="https://img.shields.io/badge/Flask-111111?style=flat-square&logo=flask&logoColor=white" alt="Flask" />
+  <img src="https://img.shields.io/badge/VLM-multimodal-7B61FF?style=flat-square" alt="VLM" />
   <img src="https://img.shields.io/badge/YOLO-assisted-2878D0?style=flat-square" alt="YOLO assisted" />
+  <img src="https://img.shields.io/badge/Human--in--the--loop-ready-E53935?style=flat-square" alt="Human in the loop" />
 </p>
 
 <p align="center">
-  XFDemo 不是一次简单的“看图问答”。它把视觉模型、目标检测、专项复核和规则后处理组织成一条可监控、可解释、可人工纠正的消防巡检链路。
-</p>
-
-<p align="center">
-  <a href="#快速开始"><strong>快速开始</strong></a>
+  <a href="#-30-秒看懂-xfdemo"><strong>30 秒看懂</strong></a>
   ·
-  <a href="#推理架构"><strong>查看架构</strong></a>
+  <a href="#-推理架构"><strong>推理架构</strong></a>
   ·
-  <a href="https://github.com/Chan-Developer/XFDemo/issues"><strong>提交问题</strong></a>
+  <a href="#-快速开始"><strong>快速开始</strong></a>
   ·
-  <a href="https://github.com/Chan-Developer/XFDemo/stargazers"><strong>Star 项目</strong></a>
+  <a href="https://github.com/Chan-Developer/XFDemo/issues"><strong>参与共建</strong></a>
 </p>
 
 ---
 
-## 为什么做 XFDemo
+> **XFDemo 不是又一个 VLM Prompt Wrapper。**
+>
+> 它是一条面向真实视觉巡检的证据链：模型负责观察，YOLO 负责定位，专项复核负责质疑，确定性规则负责守住边界，人工复核负责持续纠错。
 
-消防巡检图片经常同时包含视角偏差、组件遮挡、透明箱门、相似部件和缺失类隐患。单次 VLM 输出容易出现三类问题：
-
-- **看见了但没保留**：首轮模型识别到异常，后续复核覆盖了其他标签或证据。
-- **没检出就当缺失**：YOLO 没有召回某个组件，被错误推断为组件缺失。
-- **结论与证据脱节**：报告写着“不合规”，正文却没有能够支撑该结论的可见证据。
-
-XFDemo 的核心目标，是让每一个最终标签都能回到对应证据，并让每个模型阶段都可以被追踪、复核和纠正。
-
-## 项目亮点
-
-| 能力 | 说明 |
-| --- | --- |
-| VLM + YOLO 协同 | VLM 负责整体语义判断，YOLO 提供内部组件或箱体外观的可定位候选框 |
-| 专项复核 | 对水枪/水带缺失、栓口方向、软管严重折弯等高误判问题独立复核 |
-| 证据保留 | 专项复核只修改自己负责的标签，不能覆盖其他异常的证据 |
-| 确定性 Harness | 检查范围对齐、标签归一化、证据门控、冲突消解和最终一致性校验 |
-| 全链路追踪 | 保存各阶段耗时、状态、关键输出、YOLO 可视化和最终报告 |
-| 人工复核 | 历史记录支持人工确认、修正结论、问题归因和复核说明 |
-| 数据集看板 | 浏览清洗后的图像、标签、Prompt 版本、训练/验证拆分和样例记录 |
-
-## 界面与检测对象
+## 30 秒看懂 XFDemo
 
 <table>
   <tr>
-    <td align="center"><strong>内部组件参考</strong></td>
-    <td align="center"><strong>箱体外观参考</strong></td>
+    <td align="center"><strong>01 · SEE</strong></td>
+    <td align="center"><strong>02 · LOCATE</strong></td>
+    <td align="center"><strong>03 · VERIFY</strong></td>
+    <td align="center"><strong>04 · GUARD</strong></td>
+    <td align="center"><strong>05 · TRACE</strong></td>
   </tr>
   <tr>
-    <td><img src="resources/references/内部合规.png" alt="室内消火栓内部组件参考图" /></td>
-    <td><img src="resources/references/外观合规.jpg" alt="室内消火栓箱体外观参考图" /></td>
+    <td align="center">VLM 理解全图语义</td>
+    <td align="center">YOLO 定位可见组件</td>
+    <td align="center">专项模型复核争议项</td>
+    <td align="center">规则阻止无证据结论</td>
+    <td align="center">保存链路并支持人工纠错</td>
   </tr>
 </table>
 
-当前前端包含智能检测、检测历史、人工复核、数据集看板、法规库演示、多模态检索演示、知识图谱和型材计数等页面。模型权重和业务数据不会提交到仓库。
+```text
+一张巡检图
+   │
+   ├── VLM：看到了什么？整体是否异常？
+   ├── YOLO：哪些组件真的可见？分别在哪里？
+   ├── Specialist Review：缺失、方向、折弯是否成立？
+   ├── Harness：标签和证据是否一致？范围有没有串用？
+   └── Report：只输出最终成立的异常与对应证据
+```
+
+## 为什么值得关注
+
+单次 VLM 输出在真实巡检中很容易遇到这些问题：
+
+| 常见问题 | XFDemo 的处理方式 |
+| --- | --- |
+| 首轮识别到了异常，后续复核却把它覆盖 | 专项复核只拥有自己负责的标签，不允许清空其他证据 |
+| YOLO 没检出组件，系统就断言“组件缺失” | YOLO 只提供辅助候选框，未检出不能单独证明缺失 |
+| 透明箱门同时显示外观和内部，模型范围串用 | 先做检查范围对齐，再调用对应检测链路 |
+| 自然弧度被误判为软管严重折弯 | 使用折弯专项证据门槛和反例约束 |
+| 报告结论与正文证据互相矛盾 | 按“最终标签 → 对应证据”重新构建报告 |
+| 线上误判无法定位是哪个环节造成的 | 保存阶段耗时、状态、模型摘要和 YOLO 可视化 |
+
+## 产品能力
+
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <img src="frontend/public/demo-multimodal/internal-review.jpg" alt="内部组件定位" width="100%" /><br />
+      <strong>组件级定位</strong><br />
+      <sub>YOLO 检测框与 VLM 语义互相校验</sub>
+    </td>
+    <td width="33%" align="center">
+      <img src="frontend/public/demo-multimodal/internal-missing.jpg" alt="缺失类专项复核" width="100%" /><br />
+      <strong>缺失类专项复核</strong><br />
+      <sub>水枪、水带等高误判标签独立验证</sub>
+    </td>
+    <td width="33%" align="center">
+      <img src="frontend/public/demo-multimodal/external-label.jpg" alt="箱体外观识别" width="100%" /><br />
+      <strong>外观与标识识别</strong><br />
+      <sub>内部组件和箱体外观使用独立范围</sub>
+    </td>
+  </tr>
+</table>
+
+### 不只是一个检测页面
+
+- **智能检测**：上传图片，生成带证据的结构化检测报告。
+- **检测历史**：查看原图、YOLO 可视化、最终标签和完整推理链路。
+- **人工复核**：确认或修正模型结论，记录问题来源和复核依据。
+- **数据集看板**：浏览严格清洗版本、标签、Prompt 版本和数据拆分。
+- **多模态检索演示**：展示以图搜图、以文搜图和以图搜文的交互链路。
+- **法规库与知识图谱演示**：为后续可验证法规引用和关系检索预留产品形态。
+- **型材计数**：独立 YOLO 服务演示多任务接入方式。
 
 ## 推理架构
 
 ```mermaid
 flowchart LR
-    A["Vue 3 前端"] --> B["Flask API"]
-    B --> C["检查范围识别"]
-    C --> D["VLM 初检"]
-    C --> E["YOLO 组件检测"]
-    D --> F["二次复核综合判断"]
-    E --> F
-    F --> G["缺失类专项复核"]
-    F --> H["栓口方向专项复核"]
-    F --> I["软管折弯专项复核"]
-    G --> J["标签与证据合并"]
-    H --> J
-    I --> J
-    J --> K["确定性规则 Harness"]
-    K --> L["最终报告"]
-    K --> M["推理链路与可视化"]
-    L --> N["检测历史与人工复核"]
-    M --> N
+    UI["Vue 3"] --> API["Flask API"]
+    API --> SCOPE{"检查范围"}
+
+    SCOPE -->|内部组件| VLM["VLM 初检"]
+    SCOPE -->|箱体外观| VLM
+    SCOPE -->|可定位目标| YOLO["YOLO 辅助检测"]
+
+    VLM --> JUDGE["二次复核"]
+    YOLO --> JUDGE
+
+    JUDGE --> MISSING["缺失专项"]
+    JUDGE --> DIRECTION["栓口方向专项"]
+    JUDGE --> BEND["软管折弯专项"]
+
+    MISSING --> MERGE["标签与证据合并"]
+    DIRECTION --> MERGE
+    BEND --> MERGE
+
+    MERGE --> HARNESS["确定性 Harness"]
+    HARNESS --> REPORT["最终报告"]
+    HARNESS --> TRACE["推理链路"]
+
+    REPORT --> HISTORY["历史与人工复核"]
+    TRACE --> HISTORY
+
+    classDef primary fill:#E53935,color:#fff,stroke:#C62828;
+    classDef evidence fill:#FDECEC,color:#8E1B18,stroke:#E57373;
+    classDef output fill:#202124,color:#fff,stroke:#111;
+    class VLM,YOLO,JUDGE primary;
+    class MISSING,DIRECTION,BEND,MERGE,HARNESS evidence;
+    class REPORT,TRACE,HISTORY output;
 ```
 
-### Harness 做了什么
+### Harness 到底做了什么
 
-1. **检查范围对齐**：先区分内部组件、箱体外观或双范围可见，避免内部模型与外观模型串用。
-2. **标签别名归一化**：把模型输出中的同义表达映射到标准标签，减少标签漂移。
-3. **证据门控**：缺失、方向、折弯等高风险标签必须满足各自的可见证据条件。
-4. **专项结果隔离**：每个专项只拥有自己负责的标签，不能清空其他阶段已经成立的异常。
-5. **冲突消解**：组件明确可见时，阻止“未检出即缺失”；证据不足时返回无法判断。
-6. **报告重建**：最终报告按照“最终标签 -> 对应证据”重新生成，避免结论和正文互相矛盾。
+1. **检查范围对齐**
+   区分内部组件、箱体外观和双范围可见，避免内部模型与外观模型串用。
+
+2. **标签别名归一化**
+   将模型产生的同义表达映射到标准标签，减少 Prompt 变化造成的标签漂移。
+
+3. **证据门控**
+   缺失、方向、折弯等高风险标签必须满足各自的可见证据条件。
+
+4. **专项结果隔离**
+   每个专项只能修改自己负责的标签，不能覆盖其他阶段已经成立的异常。
+
+5. **冲突消解**
+   组件明确可见时阻止“未检出即缺失”；视角或证据不足时返回无法判断。
+
+6. **报告重建**
+   最终报告按照“最终标签 → 对应证据”生成，确保结论、标签和正文一致。
 
 ## 技术栈
 
-| 层级 | 技术 |
+| Layer | Stack |
 | --- | --- |
-| Web | Vue 3、Vite、Vue Router、Lucide |
-| API | Flask、Python |
-| 视觉理解 | OpenAI-compatible / Anthropic-compatible VLM API |
-| 目标检测 | Ultralytics YOLO |
-| 推理编排 | 分阶段 Pipeline、专项复核、规则后处理 |
-| 运行数据 | JSONL 历史记录、结果文件、YOLO 可视化 |
-| 部署 | Docker、Nginx、Gunicorn |
+| Web | Vue 3 · Vite · Vue Router · Lucide |
+| API | Flask · Python |
+| Vision | OpenAI-compatible / Anthropic-compatible VLM API |
+| Detection | Ultralytics YOLO |
+| Orchestration | Staged Pipeline · Specialist Review · Rule Harness |
+| Observability | JSONL History · Stage Trace · YOLO Visualization |
+| Deployment | Docker · Nginx · Gunicorn |
 
 ## 快速开始
 
@@ -150,21 +225,14 @@ JUDGE_VL_API_KEY=your-api-key
 JUDGE_VL_MODEL=your-judge-model
 ```
 
-没有准备 YOLO 权重时，可以先关闭 YOLO：
+尚未准备 YOLO 权重时，可以先使用纯 VLM 模式：
 
 ```dotenv
 YOLO_ENABLED=0
 ```
 
-启动 Flask：
-
 ```bash
 python -m backend.app
-```
-
-健康检查：
-
-```bash
 curl http://127.0.0.1:5000/health
 ```
 
@@ -178,11 +246,14 @@ npm ci
 npm run dev
 ```
 
-浏览器访问 `http://127.0.0.1:3000`。开发服务器会把 `/api` 请求代理到 `http://127.0.0.1:5000`。
+访问 `http://127.0.0.1:3000`。Vite 会把 `/api` 请求代理到 `http://127.0.0.1:5000`。
 
-## 启用 YOLO
+<details>
+<summary><strong>启用 YOLO 辅助检测</strong></summary>
 
-仓库不包含模型权重。准备好内部组件和外观模型后，在 `.env` 中配置：
+<br />
+
+仓库不包含模型权重。准备内部组件和外观模型后，在 `.env` 中配置：
 
 ```dotenv
 YOLO_ENABLED=1
@@ -194,7 +265,9 @@ YOLO_DEVICE=0
 YOLO_CONF=0.20
 ```
 
-YOLO 在本项目中是**辅助证据源**，检测框不会直接决定最终合规结论。缺少检测框也不能单独证明组件缺失。
+YOLO 是辅助证据源，检测框不会直接决定最终合规结论。
+
+</details>
 
 ## 项目结构
 
@@ -218,51 +291,38 @@ XFDemo/
 └── runtime/                         # 运行产物，不提交 Git
 ```
 
-## 数据与模型边界
+## 能力边界
 
-为避免泄露业务数据和产生超大仓库，下列内容默认不提交：
+模型权重、训练数据、API Key、检测历史、日志和运行产物不会提交到仓库。你需要使用自己的模型服务、权重和数据完成部署。
 
-- 消防巡检原图与训练数据集
-- VLM、YOLO 和型材计数模型权重
-- API Key、服务器地址和本地 `.env`
-- 检测历史、日志、临时文件和可视化结果
-- Python 虚拟环境、Node 依赖和 Docker 镜像
-
-你需要使用自己的模型服务、权重和数据完成部署。
-
-## 当前状态
-
-XFDemo 正在持续迭代，适合用于：
-
-- 学习多模态模型与目标检测的工程协同方式
-- 研究“模型输出 + 专项复核 + 确定性规则”的可靠性设计
-- 搭建可追溯、可人工复核的视觉巡检原型
-- 复用数据集看板、检测历史和证据可视化组件
-
-法规库、多模态检索和知识图谱目前包含演示能力，不应直接用于真实执法、合规认定或高风险决策。
+法规库、多模态检索和知识图谱当前包含演示能力，不应直接用于真实执法、正式合规认定或其他高风险决策。
 
 ## Roadmap
 
-- [ ] 建立固定人工标注回归集和端到端评测脚本
-- [ ] 将检测历史迁移到结构化数据库
-- [ ] 增加组件级置信度校准和跨模型冲突统计
-- [ ] 完善法规知识库的可验证引用与版本管理
-- [ ] 提供可复现的 Docker Compose 开发环境
-- [ ] 增加英文界面与英文文档
+- [ ] 固定人工标注回归集与端到端评测脚本
+- [ ] 检测历史迁移到结构化数据库
+- [ ] 组件级置信度校准和跨模型冲突统计
+- [ ] 法规知识库的可验证引用与版本管理
+- [ ] 可复现的 Docker Compose 开发环境
+- [ ] 英文界面与英文文档
 
-## 参与项目
+## 一起把它做得更可靠
 
-欢迎提交 Issue 讨论误判样例、Prompt 设计、YOLO 数据集、评测方法和工程架构。提交问题时，请尽量提供：
+欢迎通过 [Issues](https://github.com/Chan-Developer/XFDemo/issues) 分享误判样例、Prompt 设计、YOLO 数据集、评测方法或工程建议。
+
+提交问题时，请尽量包含：
 
 - 脱敏后的原始图片
 - 期望结论和可见证据
 - 实际输出与推理链路
 - 使用的模型、配置和复现步骤
 
-如果 XFDemo 对你的多模态视觉项目有帮助，欢迎点击右上角 **Star**。Star 会帮助更多开发者发现这个项目，也会直接影响后续公开内容的优先级。
-
----
+<p align="center">
+  <a href="https://github.com/Chan-Developer/XFDemo/stargazers">
+    <img src="https://img.shields.io/badge/如果这个项目对你有帮助-STAR_XFDEMO-E53935?style=for-the-badge&logo=github&logoColor=white" alt="Star XFDemo" />
+  </a>
+</p>
 
 <p align="center">
-  Built for traceable multimodal inspection.
+  <sub>Built for traceable multimodal inspection.</sub>
 </p>
