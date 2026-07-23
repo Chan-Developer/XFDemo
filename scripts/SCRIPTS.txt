@@ -1,38 +1,22 @@
-XFDemo Deploy Scripts
-====================
+XFDemo operational scripts
+===========================
 
-These 3 scripts form a simple "package -> upload -> deploy" pipeline.
+Runtime
+  scripts/backend/start_backend.sh
+  scripts/backend/stop_backend.sh
+  scripts/backend/check_backend.sh
+  scripts/auth/start_auth_db.sh
+  scripts/auth/stop_auth_db.sh
 
-1) scripts/package_stack.sh
-Purpose:
-  Build BOTH images (frontend + backend) and export a self-contained deploy bundle into ./deploy/.
-Outputs (under deploy/):
-  - xf-frontend-latest.tar
-  - xf-backend-latest.tar
-  - docker-compose.yml
-  - .env  (copied from deploy/.env.deploy as a runtime file)
-Typical usage:
-  bash scripts/package_stack.sh
+Deployment
+  scripts/package_stack.sh
+    Builds both images into output/deploy/images/.
 
-2) scripts/upload_deploy.sh
-Purpose:
-  Upload the deploy bundle files to a remote machine via scp. It does NOT start containers.
-Inputs (expected under deploy/):
-  - xf-frontend-latest.tar
-  - xf-backend-latest.tar
-  - docker-compose.yml
-  - .env
-Typical usage:
-  REMOTE_HOST=user@host REMOTE_DIR=/path/to/deploy bash scripts/upload_deploy.sh
+  scripts/upload_deploy.sh
+    Uploads image archives from output/deploy/images/ and configuration
+    from deploy/. It does not start containers.
 
-3) scripts/deploy_remote.sh
-Purpose:
-  One-command deployment: upload -> remote docker load -> docker compose up -d.
-Inputs (expected under deploy/):
-  - xf-frontend-latest.tar
-  - xf-backend-latest.tar
-  - docker-compose.yml
-  - .env
-Typical usage:
-  bash scripts/deploy_remote.sh user@host /path/to/deploy
+  scripts/deploy_remote.sh <user@host> [remote_dir]
+    Uploads the same bundle, loads both images, and starts Docker Compose.
 
+Configuration remains in deploy/. Generated image archives remain in output/.

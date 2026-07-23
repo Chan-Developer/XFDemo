@@ -352,8 +352,8 @@ def format_yolo_for_prompt(result: dict[str, Any] | None) -> str:
     if model_type == "appearance_presence":
         header = "YOLO辅助检测模型：箱体外观目标检测模型（检测中文标识、把手、操作说明、消火栓、箱门、英文标识、装饰性箱门、铭牌）。"
         guidance = (
-            "使用规则：外观YOLO只提供消火栓箱/箱门/标识是否疑似可见的定位线索，不直接等于合规或不合规；"
-            "如果未检出消火栓、箱门或中文标识，应作为‘当前图可能不是可判定消火栓外观图’的重要风险线索，不能直接判合格；"
+            "使用规则：外观YOLO只提供消火栓箱/箱门/标识/操作说明是否疑似可见的定位线索，不直接等于合规或不合规；"
+            "如果未检出消火栓、箱门、中文标识或操作说明，只能作为回到原图专项核验的风险线索，不能直接证明对应目标缺失；"
             "最终仍以原图清晰可见证据为准。"
         )
     else:
@@ -382,6 +382,8 @@ def format_yolo_for_prompt(result: dict[str, Any] | None) -> str:
     ]
     if model_type == "appearance_presence" and ({"消火栓", "箱门", "装饰性箱门"} & detected_labels) and "中文标识" not in detected_labels:
         lines.append("外观风险提示：YOLO已检出消火栓/箱门类目标，但未检出中文标识；请回到原图重点核验箱门上是否清晰标注中文“消火栓”。若原图也未见清晰中文“消火栓”字样，应输出隐患标签“室内消火栓箱门未清晰标注中文“消火栓”字样”，不能直接判合格。")
+    if model_type == "appearance_presence" and ({"消火栓", "箱门", "装饰性箱门"} & detected_labels) and "操作说明" not in detected_labels:
+        lines.append("外观风险提示：YOLO已检出消火栓/箱门类目标，但未检出操作说明；这不是缺失证据，必须由操作说明专项复核回到原图确认箱体正面或箱门主要区域是否存在操作步骤/使用方法说明。")
     for index, item in enumerate(compact[:10], 1):
         lines.append(
             f"{index}. 目标={item['label']}；候选框数={item['count']}；最高置信度={item['confidence']:.2f}；主框bbox_norm_xyxy={item['bboxNorm']}"

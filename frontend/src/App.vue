@@ -8,15 +8,15 @@ const route = useRoute()
 
 <template>
   <div class="app">
-    <AppHeader />
-    <main class="main">
+    <AppHeader v-if="!route.meta.authLayout" />
+    <main class="main" :class="{ 'main--auth': route.meta.authLayout }">
       <RouterView v-slot="{ Component }">
         <Transition name="page" mode="out-in">
           <component :is="Component" />
         </Transition>
       </RouterView>
     </main>
-    <AppFooter v-if="route.path !== '/knowledge-graph'" />
+    <AppFooter v-if="route.path !== '/knowledge-graph' && !route.meta.authLayout" />
   </div>
 </template>
 
@@ -29,5 +29,9 @@ const route = useRoute()
 
 .main {
   flex: 1;
+}
+
+.main--auth {
+  display: flex;
 }
 </style>

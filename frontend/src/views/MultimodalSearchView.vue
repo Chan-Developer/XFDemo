@@ -380,7 +380,7 @@ onBeforeUnmount(clearTimers)
 <style scoped>
 .retrieval-page {
   min-height: 100vh;
-  padding: calc(72px + var(--spacing-xl)) 0 var(--spacing-3xl);
+  padding: 96px 0 40px;
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
@@ -394,7 +394,7 @@ onBeforeUnmount(clearTimers)
 .query-card,
 .result-card,
 .mode-strip button {
-  border: 1px solid var(--color-gray-100);
+  border: 1px solid var(--color-gray-200);
   border-radius: var(--radius-xl);
   background: var(--bg-primary);
   box-shadow: var(--shadow-sm);
@@ -405,7 +405,7 @@ onBeforeUnmount(clearTimers)
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-xl);
-  padding: var(--spacing-xl);
+  padding: 26px 28px;
   margin-bottom: var(--spacing-md);
 }
 
@@ -419,7 +419,7 @@ onBeforeUnmount(clearTimers)
 
 .retrieval-hero h1 {
   margin: var(--spacing-xs) 0;
-  font-size: clamp(2rem, 3vw, 3rem);
+  font-size: clamp(2rem, 3vw, 2.55rem);
   line-height: 1.12;
 }
 
@@ -437,7 +437,7 @@ onBeforeUnmount(clearTimers)
   justify-content: center;
   gap: var(--spacing-sm);
   border: 0;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-lg);
   background: var(--color-primary);
   color: var(--text-inverse);
   font-weight: 800;
@@ -467,7 +467,7 @@ onBeforeUnmount(clearTimers)
   grid-template-columns: auto 1fr;
   gap: 2px var(--spacing-sm);
   align-items: center;
-  padding: var(--spacing-md);
+  padding: 14px 16px;
   text-align: left;
 }
 
@@ -499,7 +499,7 @@ onBeforeUnmount(clearTimers)
 
 .query-card,
 .result-card {
-  padding: var(--spacing-lg);
+  padding: 22px;
 }
 
 .query-card {
@@ -569,7 +569,7 @@ select:focus {
 }
 
 .secondary-action {
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-lg);
   background: var(--bg-tertiary);
   color: var(--text-primary);
   font-weight: 800;

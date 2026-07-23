@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/data/clj/Project/XFDemo"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PID_FILE="$ROOT/runtime/pids/backend.pid"
 
 if [[ ! -f "$PID_FILE" ]]; then

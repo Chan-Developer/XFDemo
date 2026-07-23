@@ -14,7 +14,8 @@ from typing import Iterable
 
 
 DEFAULT_INPUT_ROOT = Path("/data/clj/data/XFData/室内消火栓")
-DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent / "output"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "output" / "data_pipeline"
 SUPPORTED_EXTENSIONS = {
     ".jpg",
     ".jpeg",

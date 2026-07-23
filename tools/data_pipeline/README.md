@@ -25,7 +25,7 @@
 ## 默认输出目录
 
 ```text
-/data/clj/Project/XFDemo/data_pipeline/output/<运行时间>
+/data/clj/Project/XFDemo/output/data_pipeline/<运行时间>
 ```
 
 ## 用法
@@ -33,19 +33,19 @@
 按天生成统计：
 
 ```bash
-python3 /data/clj/Project/XFDemo/data_pipeline/process_fire_hydrant_dataset.py
+python3 /data/clj/Project/XFDemo/tools/data_pipeline/process_fire_hydrant_dataset.py
 ```
 
 按月生成统计：
 
 ```bash
-python3 /data/clj/Project/XFDemo/data_pipeline/process_fire_hydrant_dataset.py --group-by month
+python3 /data/clj/Project/XFDemo/tools/data_pipeline/process_fire_hydrant_dataset.py --group-by month
 ```
 
 指定输入目录和输出名：
 
 ```bash
-python3 /data/clj/Project/XFDemo/data_pipeline/process_fire_hydrant_dataset.py \
+python3 /data/clj/Project/XFDemo/tools/data_pipeline/process_fire_hydrant_dataset.py \
   --input-root /data/clj/data/XFData/室内消火栓 \
   --run-name baseline_v1 \
   --group-by day
@@ -54,7 +54,7 @@ python3 /data/clj/Project/XFDemo/data_pipeline/process_fire_hydrant_dataset.py \
 不使用 mtime 回退：
 
 ```bash
-python3 /data/clj/Project/XFDemo/data_pipeline/process_fire_hydrant_dataset.py \
+python3 /data/clj/Project/XFDemo/tools/data_pipeline/process_fire_hydrant_dataset.py \
   --disable-mtime-fallback
 ```
 

@@ -11,20 +11,20 @@ REMOTE_DIR="${2:-/data/clj/Project/XFDemo/deploy}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+IMAGE_DIR="${IMAGE_DIR:-${PROJECT_DIR}/output/deploy/images}"
 DEPLOY_DIR="${DEPLOY_DIR:-${PROJECT_DIR}/deploy}"
 
-BACKEND_TAR="${DEPLOY_DIR}/xf-backend-latest.tar"
-FRONTEND_TAR="${DEPLOY_DIR}/xf-frontend-latest.tar"
+BACKEND_TAR="${IMAGE_DIR}/xf-backend-latest.tar"
+FRONTEND_TAR="${IMAGE_DIR}/xf-frontend-latest.tar"
 COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.yml"
 ENV_FILE="${DEPLOY_DIR}/.env"
-PROMPT_FILE="${DEPLOY_DIR}/prompt.py"
 
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
 if [[ -n "${SSH_KEY:-}" ]]; then
   SSH_OPTS+=(-i "${SSH_KEY}")
 fi
 
-for file in "${BACKEND_TAR}" "${FRONTEND_TAR}" "${COMPOSE_FILE}" "${ENV_FILE}" "${PROMPT_FILE}"; do
+for file in "${BACKEND_TAR}" "${FRONTEND_TAR}" "${COMPOSE_FILE}" "${ENV_FILE}"; do
   if [[ ! -f "${file}" ]]; then
     echo "Missing required file: ${file}" >&2
     echo "Hint: run 'bash ${PROJECT_DIR}/scripts/package_stack.sh' first." >&2
@@ -39,7 +39,6 @@ scp "${SSH_OPTS[@]}" \
   "${FRONTEND_TAR}" \
   "${COMPOSE_FILE}" \
   "${ENV_FILE}" \
-  "${PROMPT_FILE}" \
   "${REMOTE_HOST}:${REMOTE_DIR}/"
 
 echo "Loading images and starting stack on remote..."

@@ -9,10 +9,9 @@ WORKDIR /app
 COPY requirements-backend.txt ./
 RUN pip install -r requirements-backend.txt
 
-# agent imports workflow + prompt.
-COPY agent.py prompt.py ./
+COPY backend ./backend
+COPY resources ./resources
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "600", "agent:app"]
-
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "600", "backend.app:app"]

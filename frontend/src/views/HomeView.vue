@@ -1,26 +1,22 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
+import { Activity, ArrowRight, BookOpenCheck, Database, History, ScanSearch, ShieldCheck } from 'lucide-vue-next'
 import { checkHealth } from '@/api'
 
 const systemStatus = ref('checking')
 
-const features = [
-  {
-    icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="1.5"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke="currentColor" stroke-width="1.5"/></svg>`,
-    title: '视觉识别',
-    desc: '基于先进的视觉语言模型，精准识别消防设施状态'
-  },
-  {
-    icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="1.5"/></svg>`,
-    title: '合规检测',
-    desc: '自动对照消防规范标准，输出专业检测报告'
-  },
-  {
-    icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    title: '即时响应',
-    desc: '秒级分析响应，高效完成大规模检测任务'
-  }
+const workspaceLinks = [
+  { path: '/inspect', title: '智能检测', desc: '上传巡检图片，完成设施状态识别与异常分析。', icon: ScanSearch, action: '开始检测' },
+  { path: '/history', title: '检测历史', desc: '追踪检测结论、证据标记与人工确认记录。', icon: History, action: '查看记录' },
+  { path: '/dataset', title: '数据集', desc: '浏览清洗后的图片、标签、划分统计和提示词版本。', icon: Database, action: '进入数据集' },
+  { path: '/regulations', title: '法规库', desc: '检索消防法规条款与当前系统收录的规范资料。', icon: BookOpenCheck, action: '检索法规' }
 ]
+
+const statusText = {
+  online: '服务运行正常',
+  checking: '正在检查服务',
+  offline: '服务暂不可用'
+}
 
 onMounted(async () => {
   try {
@@ -33,298 +29,138 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="home">
-    <!-- Hero Section -->
-    <section class="hero">
-      <div class="hero__container container">
-        <div class="hero__badge animate-fade-in">
-          <span class="hero__badge-dot" :class="`hero__badge-dot--${systemStatus}`"></span>
-          <span>{{ systemStatus === 'online' ? '系统运行中' : systemStatus === 'checking' ? '检测中...' : '系统离线' }}</span>
-        </div>
-        
-        <h1 class="hero__title animate-slide-up">
-          消防安全<br />
-          <span class="hero__title-accent">智能检测系统</span>
-        </h1>
-        
-        <p class="hero__subtitle animate-slide-up">
-          基于先进AI视觉语言模型，为消防设施提供智能化合规性检测服务
-        </p>
-        
-        <div class="hero__actions animate-slide-up">
-          <router-link to="/inspect" class="btn btn-primary btn-lg">
+  <div class="workspace">
+    <div class="workspace__container container">
+      <section class="workspace-head">
+        <div class="workspace-head__content">
+          <span class="workspace-head__eyebrow">XF INSPECTION WORKSPACE</span>
+          <h1>消防巡检工作台</h1>
+          <p>从图片检测、证据复核到历史追踪，在一个工作区完成消防设施巡检。</p>
+          <router-link to="/inspect" class="btn btn-primary">
+            <ScanSearch :size="18" />
             开始检测
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" 
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </router-link>
-          <router-link to="/about" class="btn btn-secondary btn-lg">
-            了解更多
           </router-link>
         </div>
-      </div>
-      
-      <!-- Background Decoration -->
-      <div class="hero__bg">
-        <div class="hero__bg-circle hero__bg-circle--1"></div>
-        <div class="hero__bg-circle hero__bg-circle--2"></div>
-      </div>
-    </section>
-    
-    <!-- Features Section -->
-    <section class="features">
-      <div class="features__container container">
-        <div class="features__header">
-          <h2 class="features__title">核心能力</h2>
-          <p class="features__subtitle">
-            融合视觉AI与消防专业知识，实现智能化检测
-          </p>
-        </div>
-        
-        <div class="features__grid">
-          <div v-for="(feature, index) in features" :key="index" class="feature-card card">
-            <div class="feature-card__icon" v-html="feature.icon"></div>
-            <h3 class="feature-card__title">{{ feature.title }}</h3>
-            <p class="feature-card__desc">{{ feature.desc }}</p>
+
+        <aside class="system-panel" aria-label="系统状态">
+          <div class="system-panel__top">
+            <span class="system-panel__icon"><ShieldCheck :size="20" /></span>
+            <span>
+              <small>系统状态</small>
+              <strong>{{ statusText[systemStatus] }}</strong>
+            </span>
+            <i :class="`system-panel__dot system-panel__dot--${systemStatus}`"></i>
           </div>
+          <dl>
+            <div><dt>分析能力</dt><dd>综合智能研判</dd></div>
+            <div><dt>记录管理</dt><dd>安全留存</dd></div>
+            <div><dt>结果输出</dt><dd>全程可追溯</dd></div>
+          </dl>
+        </aside>
+      </section>
+
+      <section class="workspace-modules">
+        <div class="section-heading">
+          <span>
+            <small>WORKSPACE</small>
+            <h2>常用功能</h2>
+          </span>
+          <p>按巡检流程组织的核心入口</p>
         </div>
-      </div>
-    </section>
-    
-    <!-- CTA Section -->
-    <section class="cta">
-      <div class="cta__container container container-narrow">
-        <div class="cta__card">
-          <h2 class="cta__title">立即体验智能检测</h2>
-          <p class="cta__desc">
-            上传消防栓图片，获取专业的合规性检测报告
-          </p>
-          <router-link to="/inspect" class="btn btn-primary btn-lg">
-            开始使用
+
+        <div class="module-grid">
+          <router-link v-for="item in workspaceLinks" :key="item.path" :to="item.path" class="module-card">
+            <span class="module-card__icon"><component :is="item.icon" :size="22" /></span>
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.desc }}</p>
+            <span class="module-card__action">{{ item.action }} <ArrowRight :size="16" /></span>
           </router-link>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section class="workflow-strip">
+        <span class="workflow-strip__label"><Activity :size="16" /> 工作流程</span>
+        <ol>
+          <li><b>01</b><span>资料提交</span></li>
+          <li><b>02</b><span>智能分析</span></li>
+          <li><b>03</b><span>结果确认</span></li>
+          <li><b>04</b><span>记录留存</span></li>
+        </ol>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
-/* Hero */
-.hero {
-  position: relative;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  padding: var(--spacing-4xl) 0;
-  overflow: hidden;
-}
+.workspace { min-height: 100vh; padding: 108px 0 38px; background: var(--bg-secondary); }
+.workspace__container { display: grid; gap: 24px; }
 
-.hero__container {
-  position: relative;
-  z-index: 1;
-  text-align: center;
-  max-width: 800px;
-}
-
-.hero__badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  margin-bottom: var(--spacing-xl);
-}
-
-.hero__badge-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-gray-400);
-}
-
-.hero__badge-dot--online {
-  background: var(--color-success);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-.hero__badge-dot--offline {
-  background: var(--color-error);
-}
-
-.hero__badge-dot--checking {
-  background: var(--color-warning);
-  animation: pulse 1s ease-in-out infinite;
-}
-
-.hero__title {
-  font-size: var(--font-size-5xl);
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-lg);
-  letter-spacing: -0.02em;
-}
-
-.hero__title-accent {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.hero__subtitle {
-  font-size: var(--font-size-xl);
-  color: var(--text-secondary);
-  max-width: 560px;
-  margin: 0 auto var(--spacing-2xl);
-  line-height: 1.6;
-}
-
-.hero__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--spacing-md);
-}
-
-.hero__bg {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.hero__bg-circle {
-  position: absolute;
-  border-radius: 50%;
-  opacity: 0.1;
-}
-
-.hero__bg-circle--1 {
-  width: 600px;
-  height: 600px;
-  background: var(--color-primary);
-  top: -200px;
-  right: -200px;
-}
-
-.hero__bg-circle--2 {
-  width: 400px;
-  height: 400px;
-  background: var(--color-primary-light);
-  bottom: -100px;
-  left: -100px;
-}
-
-/* Features */
-.features {
-  padding: var(--spacing-4xl) 0;
-  background: var(--bg-secondary);
-}
-
-.features__header {
-  text-align: center;
-  margin-bottom: var(--spacing-3xl);
-}
-
-.features__title {
-  font-size: var(--font-size-3xl);
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-md);
-}
-
-.features__subtitle {
-  font-size: var(--font-size-lg);
-  color: var(--text-secondary);
-}
-
-.features__grid {
+.workspace-head {
+  min-height: 330px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--spacing-xl);
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, .75fr);
+  gap: 44px;
+  align-items: center;
+  padding: clamp(30px, 5vw, 58px);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-xl);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
 }
 
-.feature-card {
-  text-align: center;
-  padding: var(--spacing-2xl);
+.workspace-head__eyebrow, .section-heading small { color: var(--color-primary); font-size: 12px; font-weight: 750; }
+.workspace-head h1 { margin: 10px 0 12px; font-size: clamp(2.25rem, 4vw, 3.5rem); line-height: 1.12; letter-spacing: 0; }
+.workspace-head__content > p { max-width: 640px; margin-bottom: 26px; color: var(--text-secondary); font-size: var(--font-size-lg); line-height: 1.8; }
+
+.system-panel { border-left: 1px solid var(--color-gray-200); padding-left: 34px; }
+.system-panel__top { display: grid; grid-template-columns: 42px 1fr auto; gap: 12px; align-items: center; padding-bottom: 20px; border-bottom: 1px solid var(--color-gray-200); }
+.system-panel__icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: var(--radius-lg); color: var(--color-primary); background: var(--color-primary-subtle); }
+.system-panel__top span:nth-child(2) { display: grid; }
+.system-panel__top small { color: var(--text-tertiary); font-size: 12px; }
+.system-panel__top strong { font-size: var(--font-size-base); }
+.system-panel__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--color-gray-400); }
+.system-panel__dot--online { background: var(--color-success); box-shadow: 0 0 0 5px rgba(47,132,100,.1); }
+.system-panel__dot--offline { background: var(--color-error); }
+.system-panel dl { display: grid; gap: 13px; padding-top: 19px; }
+.system-panel dl div { display: flex; justify-content: space-between; gap: 18px; font-size: 13px; }
+.system-panel dt { color: var(--text-tertiary); }
+.system-panel dd { color: var(--text-secondary); text-align: right; }
+
+.workspace-modules { padding: 26px 0 0; }
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
+.section-heading h2 { margin-top: 3px; font-size: 24px; }
+.section-heading p { color: var(--text-tertiary); font-size: 13px; }
+
+.module-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.module-card { min-height: 220px; display: flex; flex-direction: column; padding: 24px; border: 1px solid var(--color-gray-200); border-radius: var(--radius-xl); background: #fff; box-shadow: var(--shadow-sm); transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast); }
+.module-card:hover { border-color: #d7c0bd; box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.module-card__icon { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 24px; border: 1px solid #ead3d1; border-radius: var(--radius-lg); color: var(--color-primary); background: #fff9f8; }
+.module-card h3 { margin-bottom: 8px; font-size: 18px; }
+.module-card p { color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.module-card__action { display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 20px; color: var(--color-primary-dark); font-size: 13px; font-weight: 700; }
+
+.workflow-strip { display: flex; align-items: center; gap: 28px; margin-top: 8px; padding: 18px 22px; border: 1px solid var(--color-gray-200); border-radius: var(--radius-xl); background: #eef1ef; }
+.workflow-strip__label { display: flex; align-items: center; gap: 7px; color: var(--text-primary); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.workflow-strip ol { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); list-style: none; }
+.workflow-strip li { display: flex; align-items: center; gap: 9px; padding: 0 18px; border-left: 1px solid var(--color-gray-300); color: var(--text-secondary); font-size: 13px; }
+.workflow-strip b { color: var(--color-primary); font-size: 11px; }
+
+@media (max-width: 980px) {
+  .workspace-head { grid-template-columns: 1fr; gap: 28px; }
+  .system-panel { border-left: 0; border-top: 1px solid var(--color-gray-200); padding: 24px 0 0; }
+  .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-.feature-card__icon {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto var(--spacing-lg);
-  color: var(--color-primary);
-}
-
-.feature-card__icon :deep(svg) {
-  width: 100%;
-  height: 100%;
-}
-
-.feature-card__title {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-sm);
-}
-
-.feature-card__desc {
-  font-size: var(--font-size-base);
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-/* CTA */
-.cta {
-  padding: var(--spacing-4xl) 0;
-}
-
-.cta__card {
-  text-align: center;
-  padding: var(--spacing-3xl);
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-  border-radius: var(--radius-2xl);
-  color: var(--text-inverse);
-}
-
-.cta__title {
-  font-size: var(--font-size-3xl);
-  font-weight: 700;
-  margin-bottom: var(--spacing-md);
-}
-
-.cta__desc {
-  font-size: var(--font-size-lg);
-  opacity: 0.9;
-  margin-bottom: var(--spacing-xl);
-}
-
-.cta__card .btn {
-  background: white;
-  color: var(--color-primary);
-}
-
-.cta__card .btn:hover {
-  background: var(--color-gray-100);
-  transform: translateY(-2px);
-}
-
-@media (max-width: 768px) {
-  .hero {
-    min-height: auto;
-    padding: calc(80px + var(--spacing-3xl)) 0 var(--spacing-3xl);
-  }
-  
-  .hero__title {
-    font-size: var(--font-size-4xl);
-  }
-  
-  .hero__subtitle {
-    font-size: var(--font-size-lg);
-  }
+@media (max-width: 640px) {
+  .workspace { padding-top: 88px; }
+  .workspace-head { min-height: 0; padding: 24px 20px; }
+  .workspace-head h1 { font-size: 32px; }
+  .workspace-head__content > p { font-size: 15px; }
+  .module-grid { grid-template-columns: 1fr; }
+  .module-card { min-height: 184px; }
+  .section-heading p { display: none; }
+  .workflow-strip { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .workflow-strip ol { width: 100%; grid-template-columns: repeat(2, 1fr); gap: 12px 0; }
+  .workflow-strip li:nth-child(odd) { border-left: 0; padding-left: 0; }
 }
 </style>

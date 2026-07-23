@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify
 
 from backend.config.settings import get_settings
+from backend.infrastructure.database.postgres import database_is_ready
 
 health_bp = Blueprint("health", __name__)
 
@@ -20,5 +21,6 @@ def health():
             "base_url": settings.base_url,
             "model": settings.model,
             "enable_thinking": settings.enable_thinking,
+            "database": "ready" if database_is_ready() else "unavailable",
         }
     )

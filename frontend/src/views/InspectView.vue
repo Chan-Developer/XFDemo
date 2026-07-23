@@ -14,6 +14,25 @@ const error = ref('')
 const yoloResult = ref(null)
 const traceResult = ref(null)
 const abortController = ref(null)
+const STREAM_RENDER_INTERVAL = 120
+let streamedResult = ''
+let streamRenderTimer = null
+
+const cancelStreamRender = () => {
+  if (streamRenderTimer !== null) {
+    window.clearTimeout(streamRenderTimer)
+    streamRenderTimer = null
+  }
+}
+
+const scheduleStreamRender = () => {
+  if (streamRenderTimer !== null) return
+
+  streamRenderTimer = window.setTimeout(() => {
+    result.value = streamedResult
+    streamRenderTimer = null
+  }, STREAM_RENDER_INTERVAL)
+}
 
 // 只需要有图片即可提交
 const canSubmit = computed(() => {
@@ -77,6 +96,8 @@ const handleImageRemove = () => {
 const abortActiveRequest = () => {
   abortController.value?.abort()
   abortController.value = null
+  cancelStreamRender()
+  streamedResult = ''
 }
 
 const handleSubmit = async () => {
@@ -88,6 +109,7 @@ const handleSubmit = async () => {
   result.value = ''
   yoloResult.value = null
   traceResult.value = null
+  streamedResult = ''
   const controller = new AbortController()
   abortController.value = controller
 
@@ -97,10 +119,12 @@ const handleSubmit = async () => {
       image: imageBase64.value,
       signal: controller.signal,
       onChunk: (delta) => {
-        result.value += delta
+        streamedResult += delta
+        scheduleStreamRender()
       }
     })
 
+    cancelStreamRender()
     result.value = res.response
     yoloResult.value = res.yolo || null
     traceResult.value = res.trace || null
@@ -109,6 +133,7 @@ const handleSubmit = async () => {
       return
     }
 
+    cancelStreamRender()
     error.value = err.message || '检测失败，请重试'
   } finally {
     if (abortController.value === controller) {
@@ -275,7 +300,7 @@ onBeforeUnmount(() => {
 
             <!-- Result State -->
             <div v-else-if="result || isLoading" class="inspect__result">
-              <div v-if="isLoading" class="inspect__streaming-status">
+              <div v-if="isLoading && result" class="inspect__streaming-status">
                 <LoadingSpinner size="sm" />
                 <span>AI 正在流式生成检测报告...</span>
               </div>
@@ -340,32 +365,32 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .inspect {
-  padding: calc(80px + var(--spacing-3xl)) 0 var(--spacing-3xl);
+  padding: 104px 0 40px;
   min-height: 100vh;
   background: var(--bg-secondary);
 }
 
 .inspect__header {
-  text-align: center;
-  margin-bottom: var(--spacing-3xl);
+  text-align: left;
+  margin-bottom: 26px;
 }
 
 .inspect__title {
-  font-size: var(--font-size-4xl);
+  font-size: var(--font-size-3xl);
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 6px;
 }
 
 .inspect__subtitle {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
 .inspect__content {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--spacing-xl);
+  gap: 20px;
 }
 
 @media (min-width: 1024px) {
@@ -378,11 +403,11 @@ onBeforeUnmount(() => {
 .inspect__input-section {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: 18px;
 }
 
 .inspect__card {
-  padding: var(--spacing-xl);
+  padding: 24px;
 }
 
 .inspect__card-title {
@@ -431,11 +456,11 @@ onBeforeUnmount(() => {
 
 .inspect__result-section {
   position: sticky;
-  top: 100px;
+  top: 88px;
 }
 
 .inspect__result-card {
-  min-height: 400px;
+  min-height: 460px;
   display: flex;
   flex-direction: column;
 }
@@ -475,7 +500,7 @@ onBeforeUnmount(() => {
 .inspect__result {
   flex: 1;
   overflow-y: auto;
-  max-height: 600px;
+  max-height: 680px;
 }
 
 .inspect__streaming-status {
@@ -492,7 +517,6 @@ onBeforeUnmount(() => {
   top: 0;
 }
 
-/* 检测报告样式 */
 .inspect__result-content.markdown-body {
   display: grid;
   gap: var(--spacing-md);
@@ -506,11 +530,11 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin-top: var(--spacing-md);
   padding: 14px 18px;
-  border: 1px solid var(--color-gray-100);
+  border: 1px solid var(--color-gray-200);
   border-left: 3px solid var(--color-primary);
-  border-radius: 14px;
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.06), rgba(255, 255, 255, 0.96));
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.045);
+  border-radius: var(--radius-lg);
+  background: #fffafa;
+  box-shadow: none;
 }
 
 .inspect__result-content :deep(.report-section:first-child) {
@@ -519,7 +543,7 @@ onBeforeUnmount(() => {
 
 .inspect__result-content :deep(.report-section--neutral) {
   border-left-color: var(--color-gray-300);
-  background: linear-gradient(90deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.92));
+  background: #f8faf9;
 }
 
 .inspect__result-content :deep(.report-section__index) {
@@ -527,7 +551,7 @@ onBeforeUnmount(() => {
   width: 28px;
   height: 28px;
   place-items: center;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   background: var(--color-primary);
   color: var(--text-inverse);
   font-size: 12px;
@@ -542,7 +566,7 @@ onBeforeUnmount(() => {
 .inspect__result-content :deep(.report-section__title) {
   min-width: 0;
   color: var(--text-primary);
-  font-size: clamp(1.08rem, 1.25vw, 1.28rem);
+  font-size: 1.05rem;
   font-weight: 760;
   line-height: 1.28;
   letter-spacing: 0;
@@ -553,30 +577,30 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   min-height: 26px;
-  padding: 0 14px;
+  padding: 0 10px;
   border-radius: var(--radius-full);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .inspect__result-content :deep(.report-section__badge--ok) {
-  color: #047857;
-  background: #d1fae5;
+  color: #247357;
+  background: #e3f3ec;
 }
 
 .inspect__result-content :deep(.report-section__badge--bad) {
-  color: #b91c1c;
-  background: #fee2e2;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-subtle);
 }
 
 .inspect__result-content :deep(.report-paragraph) {
   margin: 0;
   padding: 0 var(--spacing-xs) var(--spacing-sm) 40px;
   color: var(--text-primary);
-  font-size: clamp(1rem, 1.02vw, 1.08rem);
-  line-height: 1.85;
-  text-align: justify;
+  font-size: .94rem;
+  line-height: 1.82;
+  text-align: left;
   overflow-wrap: anywhere;
 }
 

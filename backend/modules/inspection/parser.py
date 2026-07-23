@@ -91,10 +91,10 @@ def sanitize_final_report(text: str) -> str:
 def normalize_report_policy(report: str, candidate_suggestions: list[str] | None = None) -> str:
     """Keep legacy model output aligned with the current audit standard.
 
-    Older fine-tuned outputs may still mark nameplate, operation instruction, or
-    English-only issues as hazards. The active label list already removes those
-    from labels; this pass preserves them as suggestions and fixes the verdict
-    when no required hazard remains.
+    Older fine-tuned outputs may still mark nameplate or English-only issues as
+    hazards. The active label list removes those from labels; this pass
+    preserves them as suggestions and fixes the verdict when no required
+    hazard remains. Operation-instruction defects are active appearance labels.
     """
     labels = labels_from_report(report)
     suggestions = list(dict.fromkeys((candidate_suggestions or []) + suggestions_from_report(report)))
@@ -238,8 +238,6 @@ def normalize_suggestion_list(value: Any) -> list[str]:
             suggestions.append("室内消火栓箱体铭牌模糊")
         elif "铭牌" in item and "室内消火栓箱体无铭牌" not in suggestions:
             suggestions.append("室内消火栓箱体无铭牌")
-        if "操作说明" in item and "室内消火栓箱操作说明缺失或不清晰" not in suggestions:
-            suggestions.append("室内消火栓箱操作说明缺失或不清晰")
         if ("FIRE HYDRANT" in item or "英文" in item) and "室内消火栓箱门英文“FIRE HYDRANT”字样缺失或不清晰" not in suggestions:
             suggestions.append("室内消火栓箱门英文“FIRE HYDRANT”字样缺失或不清晰")
     return suggestions

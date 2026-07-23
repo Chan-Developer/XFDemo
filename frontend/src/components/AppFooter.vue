@@ -1,43 +1,30 @@
 <script setup>
+import { Activity, ShieldCheck } from 'lucide-vue-next'
+
 const currentYear = new Date().getFullYear()
 </script>
 
 <template>
   <footer class="footer">
     <div class="footer__container container">
-      <div class="footer__content">
-        <div class="footer__brand">
-          <div class="footer__logo">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2C8.5 2 6 5.5 6 9c0 4.5 6 11 6 11s6-6.5 6-11c0-3.5-2.5-7-6-7z" 
-                    fill="currentColor" opacity="0.9"/>
-              <circle cx="12" cy="9" r="2.5" fill="white"/>
-            </svg>
-            <span>消防智检</span>
-          </div>
-          <p class="footer__desc">
-            AI驱动的消防安全智能检测系统，助力消防设施合规管理
-          </p>
-        </div>
-        
-        <div class="footer__links">
-          <div class="footer__links-group">
-            <h4>产品</h4>
-            <router-link to="/inspect">智能检测</router-link>
-            <router-link to="/dataset">&#25968;&#25454;&#38598;</router-link>
-            <router-link to="/about">了解更多</router-link>
-          </div>
-          <div class="footer__links-group">
-            <h4>支持</h4>
-            <a href="#">使用文档</a>
-            <a href="#">常见问题</a>
-          </div>
-        </div>
+      <div class="footer__brand">
+        <span class="footer__mark"><ShieldCheck :size="18" /></span>
+        <span>
+          <strong>消防智检</strong>
+          <small>消防设施智能巡检工作台</small>
+        </span>
       </div>
-      
-      <div class="footer__bottom">
-        <p>&copy; {{ currentYear }} 消防智检. All rights reserved.</p>
-        <p class="footer__tech">Powered by AI Vision-Language Model</p>
+
+      <nav class="footer__nav" aria-label="页脚导航">
+        <router-link to="/inspect">智能检测</router-link>
+        <router-link to="/history">检测历史</router-link>
+        <router-link to="/dataset">数据集</router-link>
+        <router-link to="/">首页</router-link>
+      </nav>
+
+      <div class="footer__meta">
+        <span class="footer__status"><Activity :size="14" /> 服务状态监控</span>
+        <span>© {{ currentYear }} XFDemo</span>
       </div>
     </div>
   </footer>
@@ -45,97 +32,54 @@ const currentYear = new Date().getFullYear()
 
 <style scoped>
 .footer {
-  background: var(--bg-secondary);
-  padding: var(--spacing-3xl) 0 var(--spacing-xl);
-  margin-top: var(--spacing-4xl);
+  margin-top: var(--spacing-2xl);
+  border-top: 1px solid var(--color-gray-200);
+  background: #eef1ef;
 }
 
-.footer__content {
+.footer__container {
+  min-height: 96px;
   display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--spacing-2xl);
-  padding-bottom: var(--spacing-2xl);
-  border-bottom: 1px solid var(--color-gray-200);
-}
-
-@media (min-width: 768px) {
-  .footer__content {
-    grid-template-columns: 2fr 1fr;
-  }
-}
-
-.footer__brand {
-  max-width: 320px;
-}
-
-.footer__logo {
-  display: flex;
+  grid-template-columns: minmax(210px, 1fr) auto minmax(210px, 1fr);
   align-items: center;
-  gap: var(--spacing-sm);
-  font-weight: 600;
-  font-size: var(--font-size-lg);
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-md);
+  gap: var(--spacing-xl);
 }
 
-.footer__logo svg {
-  width: 28px;
-  height: 28px;
+.footer__brand,
+.footer__brand > span:last-child,
+.footer__meta,
+.footer__status { display: flex; align-items: center; }
+
+.footer__brand { gap: 10px; }
+.footer__brand > span:last-child { align-items: flex-start; flex-direction: column; line-height: 1.35; }
+.footer__brand strong { font-size: var(--font-size-sm); }
+.footer__brand small { color: var(--text-tertiary); font-size: 11px; }
+
+.footer__mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e5c6c3;
+  border-radius: var(--radius-md);
   color: var(--color-primary);
+  background: #fff8f7;
 }
 
-.footer__desc {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  line-height: 1.7;
+.footer__nav { display: flex; align-items: center; gap: 22px; }
+.footer__nav a { color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.footer__nav a:hover { color: var(--color-primary-dark); }
+
+.footer__meta { justify-content: flex-end; gap: 16px; color: var(--text-tertiary); font-size: 12px; }
+.footer__status { gap: 6px; color: var(--color-success); }
+
+@media (max-width: 820px) {
+  .footer__container { grid-template-columns: 1fr auto; padding-top: 18px; padding-bottom: 18px; }
+  .footer__nav { display: none; }
 }
 
-.footer__links {
-  display: flex;
-  gap: var(--spacing-3xl);
-}
-
-.footer__links-group h4 {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-md);
-}
-
-.footer__links-group a {
-  display: block;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  margin-bottom: var(--spacing-sm);
-  transition: color var(--transition-fast);
-}
-
-.footer__links-group a:hover {
-  color: var(--color-primary);
-}
-
-.footer__bottom {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding-top: var(--spacing-xl);
-  text-align: center;
-}
-
-.footer__bottom p {
-  font-size: var(--font-size-sm);
-  color: var(--text-tertiary);
-}
-
-.footer__tech {
-  font-size: var(--font-size-xs) !important;
-}
-
-@media (min-width: 768px) {
-  .footer__bottom {
-    flex-direction: row;
-    justify-content: space-between;
-  }
+@media (max-width: 520px) {
+  .footer__container { grid-template-columns: 1fr; gap: 12px; }
+  .footer__meta { justify-content: flex-start; }
 }
 </style>

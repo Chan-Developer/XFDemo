@@ -17,6 +17,9 @@ frontend/dist/
 .env.*
 deploy/.env
 deploy/.env.*
+!.env.example
+!deploy/.env.example
+!deploy/.env.auth.example
 *.pem
 *.key
 *.crt
@@ -39,13 +42,14 @@ runtime/
 *.ckpt
 *.onnx
 deploy/*.tar
-data_pipeline/output/
-Research/attention_outputs/
+deploy/postgres-data/
 artifacts/
+output/
 
 # Local backups created during iteration
+archive/backups/
 backups/
-*.bak-*
+*.bak*
 
 # OS/editor
 .DS_Store

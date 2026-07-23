@@ -709,14 +709,14 @@ onMounted(() => {
 <style scoped>
 .dataset-page {
   min-height: 100vh;
-  padding: calc(80px + var(--spacing-2xl)) 0 var(--spacing-3xl);
+  padding: 96px 0 40px;
   background: var(--bg-secondary);
 }
 
 .dataset-page__container {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: 18px;
 }
 
 .dataset-hero {
@@ -731,13 +731,13 @@ onMounted(() => {
 .dataset-hero__eyebrow {
   display: inline-flex;
   margin-bottom: var(--spacing-sm);
-  color: var(--color-success);
+  color: var(--color-primary);
   font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
 .dataset-hero__title {
-  font-size: var(--font-size-4xl);
+  font-size: var(--font-size-3xl);
   line-height: 1.2;
   color: var(--text-primary);
   margin-bottom: var(--spacing-sm);
@@ -768,13 +768,13 @@ onMounted(() => {
 .summary-card,
 .dataset-panel {
   background: var(--bg-primary);
-  border: 1px solid var(--color-gray-100);
+  border: 1px solid var(--color-gray-200);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
 }
 
 .summary-card {
-  padding: var(--spacing-lg);
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
@@ -814,7 +814,7 @@ onMounted(() => {
 }
 
 .dataset-panel {
-  padding: var(--spacing-xl);
+  padding: 24px;
   min-width: 0;
 }
 
@@ -830,7 +830,7 @@ onMounted(() => {
 }
 
 .section-heading h2 {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-xl);
   line-height: 1.25;
   margin-bottom: var(--spacing-xs);
 }
@@ -1149,6 +1149,10 @@ onMounted(() => {
   margin-bottom: var(--spacing-md);
 }
 
+.sample-toolbar > * {
+  min-width: 0;
+}
+
 .sample-toolbar label {
   display: flex;
   flex-direction: column;
@@ -1159,6 +1163,8 @@ onMounted(() => {
 
 .sample-toolbar select,
 .sample-toolbar input {
+  width: 100%;
+  min-width: 0;
   min-height: 42px;
   border: 1px solid var(--color-gray-200);
   border-radius: var(--radius-lg);
@@ -1204,7 +1210,7 @@ onMounted(() => {
   padding: 0 var(--spacing-md);
   white-space: nowrap;
   word-break: keep-all;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--color-gray-200);
@@ -1683,6 +1689,10 @@ onMounted(() => {
   .sample-toolbar,
   .sample-card-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dataset-panel {
+    overflow: hidden;
   }
 
   .gallery-pager {

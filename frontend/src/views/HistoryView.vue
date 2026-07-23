@@ -18,7 +18,7 @@ const ui = {
   clearAll: '\u6e05\u7a7a\u5386\u53f2',
   clearConfirm: '\u786e\u5b9a\u6e05\u7a7a\u6240\u6709\u68c0\u6d4b\u5386\u53f2\u5417\uff1f',
   clearing: '\u6e05\u7a7a\u4e2d...',
-  yoloPreview: 'YOLO \u53ef\u89c6\u5316',
+  yoloPreview: '\u7ec4\u4ef6\u6807\u8bb0',
   loading: '\u6b63\u5728\u8bfb\u53d6\u68c0\u6d4b\u5386\u53f2...',
   empty: '\u6682\u65e0\u68c0\u6d4b\u5386\u53f2\uff0c\u5b8c\u6210\u4e00\u6b21\u667a\u80fd\u68c0\u6d4b\u540e\u4f1a\u81ea\u52a8\u51fa\u73b0\u5728\u8fd9\u91cc\u3002',
   compliant: '\u5408\u89c4',
@@ -53,11 +53,11 @@ const ui = {
   reviewLabelsPlaceholder: '\u591a\u4e2a\u6807\u7b7e\u7528\u5206\u53f7\u6216\u6362\u884c\u5206\u9694',
   reviewErrorSource: '\u95ee\u9898\u6765\u6e90',
   reviewSourceUnknown: '\u672a\u5224\u5b9a',
-  reviewSourceQwen: 'QwenVL \u521d\u68c0',
-  reviewSourceYolo: 'YOLO \u68c0\u6d4b',
-  reviewSourceJudge: '\u4e8c\u6b21\u590d\u6838',
-  reviewSourcePrompt: '\u63d0\u793a\u8bcd',
-  reviewSourceData: '\u6570\u636e\u6807\u6ce8',
+  reviewSourceQwen: '\u57fa\u7840\u5206\u6790',
+  reviewSourceYolo: '\u7279\u5f81\u6838\u9a8c',
+  reviewSourceJudge: '\u4e00\u81f4\u6027\u6821\u9a8c',
+  reviewSourcePrompt: '\u5206\u6790\u89c4\u5219',
+  reviewSourceData: '\u53c2\u8003\u6570\u636e',
   reviewSourceOther: '\u5176\u4ed6',
   reviewComment: '\u590d\u6838\u8bf4\u660e',
   reviewCommentPlaceholder: '\u5199\u660e\u4eba\u5de5\u5224\u65ad\u4f9d\u636e\uff0c\u4f8b\u5982\u56fe\u4e2d\u53ef\u89c1\u6c34\u67aa\uff0c\u6a21\u578b\u8bef\u5224\u4e3a\u7f3a\u5931',
@@ -67,8 +67,8 @@ const ui = {
   reviewModelVerdict: '\u6a21\u578b\u7ed3\u8bba',
   reviewHumanVerdict: '\u4eba\u5de5\u590d\u6838',
   reviewNoComment: '\u672a\u586b\u5199\u590d\u6838\u8bf4\u660e',
-  traceTitle: '\u63a8\u7406\u94fe\u8def',
-  traceHint: 'QwenVL \u00b7 YOLO \u00b7 \u590d\u6838',
+  traceTitle: '\u5904\u7406\u8bb0\u5f55',
+  traceHint: '\u5206\u6790 \u00b7 \u6838\u9a8c \u00b7 \u7559\u5b58',
   reportHint: '\u7ed3\u8bba\u4e0e\u5b8c\u6574\u8bf4\u660e'
 }
 const filters = ref({ verdict: '', q: '' })
@@ -129,11 +129,30 @@ const traceStagesOf = (record) => record.trace?.stages || []
 const traceIssuesOf = (record) => record.trace?.summary?.issues || []
 const formatDuration = (value) => `${Number(value || 0)}ms`
 const stageStatusText = (stage) => {
-  if (stage?.superseded) return '\u5df2\u4f5c\u5e9f'
+  if (stage?.superseded) return '\u672a\u91c7\u7eb3'
   if (stage?.status === 'warn') return '\u63d0\u9192'
   if (stage?.status === 'error') return '\u5f02\u5e38'
   if (stage?.status === 'skipped') return '\u8df3\u8fc7'
   return '\u6b63\u5e38'
+}
+const stageTitleOf = (stage) => {
+  const name = String(stage?.name || '').toLowerCase()
+  const signal = `${name} ${String(stage?.title || '').toLowerCase()}`
+  if (name === 'qwen_first') return 'A \u00b7 \u57fa\u7840\u5206\u6790'
+  if (signal.includes('missing') || signal.includes('\u7f3a\u5931')) return 'R1 \u00b7 \u5b8c\u6574\u6027\u6821\u9a8c'
+  if (signal.includes('kink') || signal.includes('hose') || signal.includes('\u6298\u5f2f') || signal.includes('\u5f2f\u6298')) return 'R2 \u00b7 \u72b6\u6001\u6821\u9a8c'
+  if (signal.includes('direction') || signal.includes('outlet') || signal.includes('\u65b9\u5411')) return 'R3 \u00b7 \u5b89\u88c5\u6821\u9a8c'
+  if (name.startsWith('yolo_')) return 'B \u00b7 \u7279\u5f81\u6838\u9a8c'
+  if (name.includes('review') || name.includes('judge')) return 'C \u00b7 \u4e00\u81f4\u6027\u6821\u9a8c'
+  return 'C \u00b7 \u7ed3\u679c\u6821\u9a8c'
+}
+const issueTitleOf = (issue) => {
+  const text = `${issue?.type || ''} ${issue?.title || ''}`.toLowerCase()
+  if (text.includes('qwen') || text.includes('\u521d\u68c0')) return '\u521d\u6b65\u7ed3\u8bba\u5df2\u6821\u6b63'
+  if (text.includes('yolo') || text.includes('\u68c0\u51fa')) return '\u5019\u9009\u8bc1\u636e\u672a\u91c7\u7eb3'
+  if (text.includes('\u7f6e\u4fe1') || text.includes('confidence')) return '\u6821\u9a8c\u7f6e\u4fe1\u4e0d\u8db3'
+  if (text.includes('\u7f3a\u5931') || text.includes('missing')) return '\u5b8c\u6574\u6027\u7ed3\u679c\u5df2\u590d\u67e5'
+  return '\u9636\u6bb5\u7ed3\u679c\u5df2\u8c03\u6574'
 }
 const stageMainText = (stage) => {
   if (stage.name === 'qwen_first') {
@@ -141,8 +160,8 @@ const stageMainText = (stage) => {
     return `${output.verdict || '\u672a\u89e3\u6790\u7ed3\u8bba'} / ${(output.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
   }
   if (String(stage.name || '').startsWith('yolo_')) {
-    const summary = `\u5019\u9009\u6846 ${stage.detectionCount || 0} \u4e2a / ${(stage.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
-    return stage.superseded ? `\u65e7\u8303\u56f4\u7ed3\u679c\uff1a${summary}\uff1b\u4e0d\u53c2\u4e0e\u6700\u7ec8\u7ed3\u8bba` : summary
+    const summary = `\u8bc6\u522b\u5230 ${stage.detectionCount || 0} \u9879\u7ec4\u4ef6\u8bc1\u636e / ${(stage.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
+    return stage.superseded ? `\u8be5\u9636\u6bb5\u7ed3\u679c\u672a\u91c7\u7eb3\uff1a${summary}` : summary
   }
   const output = stage.output || {}
   return `${output.verdict || '\u672a\u89e3\u6790\u7ed3\u8bba'} / ${(output.labels || []).join('\uff1b') || '\u65e0\u6807\u7b7e'}`
@@ -527,7 +546,7 @@ onMounted(loadHistory)
                   <ChevronDown class="history-action__chevron" :size="16" :stroke-width="2" />
                 </summary>
                 <div v-if="traceStagesOf(record).length" class="history-trace__body">
-                  <p class="history-trace__note">&#x8fd9;&#x91cc;&#x8bb0;&#x5f55;&#x672c;&#x6b21;&#x68c0;&#x6d4b;&#x5404;&#x9636;&#x6bb5;&#x7684;&#x8017;&#x65f6;&#x3001;&#x72b6;&#x6001;&#x548c;&#x5173;&#x952e;&#x8f93;&#x51fa;&#xff0c;&#x7528;&#x6765;&#x6392;&#x67e5;&#x662f;&#x89c6;&#x89c9;&#x6a21;&#x578b;&#x3001;YOLO &#x8fd8;&#x662f;&#x590d;&#x6838;&#x73af;&#x8282;&#x5f71;&#x54cd;&#x4e86;&#x6700;&#x7ec8;&#x7ed3;&#x8bba;&#x3002;</p>
+                  <p class="history-trace__note">记录本次任务的处理阶段、运行状态和关键结论，用于核对结果形成过程。</p>
                   <div class="history-trace__summary">
                     <span>&#x603b;&#x8017;&#x65f6; {{ formatDuration(record.trace?.summary?.totalDurationMs) }}</span>
                     <span>&#x95ee;&#x9898; {{ traceIssuesOf(record).length }} &#x4e2a;</span>
@@ -538,13 +557,13 @@ onMounted(loadHistory)
                     :class="['history-trace__stage', `history-trace__stage--${stage.status || 'ok'}`]"
                   >
                     <div>
-                      <strong>{{ stage.title }}</strong>
+                      <strong>{{ stageTitleOf(stage) }}</strong>
                       <span>{{ stageStatusText(stage) }} &middot; {{ formatDuration(stage.durationMs) }}</span>
                     </div>
                     <p>{{ stageMainText(stage) }}</p>
                   </div>
                   <div v-if="traceIssuesOf(record).length" class="history-trace__issues">
-                    <span v-for="issue in traceIssuesOf(record)" :key="`${record.id}-${issue.type}`">{{ issue.title }}</span>
+                    <span v-for="issue in traceIssuesOf(record)" :key="`${record.id}-${issue.type}`">{{ issueTitleOf(issue) }}</span>
                   </div>
                 </div>
                 <p v-else class="history-trace__empty">{{ ui.traceEmpty }}</p>
@@ -615,21 +634,21 @@ onMounted(loadHistory)
 <style scoped>
 .history-page {
   min-height: 100vh;
-  padding: calc(80px + var(--spacing-2xl)) 0 var(--spacing-3xl);
+  padding: 96px 0 40px;
   background: var(--bg-secondary);
 }
 
 .history-page__container {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: 18px;
 }
 
 .history-hero,
 .history-panel,
 .history-card {
   background: var(--bg-primary);
-  border: 1px solid var(--color-gray-100);
+  border: 1px solid var(--color-gray-200);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
 }
@@ -638,7 +657,7 @@ onMounted(loadHistory)
   display: flex;
   justify-content: space-between;
   gap: var(--spacing-xl);
-  padding: var(--spacing-xl);
+  padding: 24px 28px;
   align-items: flex-end;
 }
 
@@ -650,7 +669,7 @@ onMounted(loadHistory)
 
 .history-hero h1 {
   margin: var(--spacing-xs) 0;
-  font-size: var(--font-size-4xl);
+  font-size: var(--font-size-3xl);
   line-height: 1.2;
 }
 
@@ -667,12 +686,12 @@ onMounted(loadHistory)
 
 .history-hero__stat strong {
   display: block;
-  font-size: var(--font-size-4xl);
+  font-size: var(--font-size-3xl);
   line-height: 1;
 }
 
 .history-panel {
-  padding: var(--spacing-xl);
+  padding: 22px;
 }
 
 .history-toolbar {
@@ -717,7 +736,7 @@ onMounted(loadHistory)
 .history-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--spacing-lg);
+  gap: 16px;
 }
 
 .history-card {
@@ -758,7 +777,7 @@ onMounted(loadHistory)
 }
 
 .history-card__body {
-  padding: var(--spacing-md);
+  padding: 16px 17px 18px;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
@@ -803,7 +822,7 @@ onMounted(loadHistory)
 .history-delete {
   min-height: 28px;
   padding: 0 var(--spacing-sm);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-gray-200);
   background: var(--bg-secondary);
   color: var(--color-primary);

@@ -77,7 +77,7 @@
 运行后会在：
 
 ```text
-output/<run_name>/
+output/training/qwen25vl/<run_name>/
 ```
 
 生成这些文件：
@@ -101,14 +101,14 @@ output/<run_name>/
 如果 vLLM 地址和模型名已经是默认值：
 
 ```bash
-python3 /data/clj/Project/XFDemo/finetune_qwen25vl/build_qwen25vl_dataset.py \
+python3 /data/clj/Project/XFDemo/tools/training/qwen25vl/build_qwen25vl_dataset.py \
   --run-name baseline_qwen25vl
 ```
 
 如果你要手动指定 vLLM：
 
 ```bash
-python3 /data/clj/Project/XFDemo/finetune_qwen25vl/build_qwen25vl_dataset.py \
+python3 /data/clj/Project/XFDemo/tools/training/qwen25vl/build_qwen25vl_dataset.py \
   --run-name baseline_qwen25vl \
   --vllm-api-base http://127.0.0.1:9300/v1 \
   --model-name Qwen2.5-VL-72B-Instruct
@@ -117,7 +117,7 @@ python3 /data/clj/Project/XFDemo/finetune_qwen25vl/build_qwen25vl_dataset.py \
 如果只想先做数据整理，不调用教师模型：
 
 ```bash
-python3 /data/clj/Project/XFDemo/finetune_qwen25vl/build_qwen25vl_dataset.py \
+python3 /data/clj/Project/XFDemo/tools/training/qwen25vl/build_qwen25vl_dataset.py \
   --run-name debug_no_teacher \
   --skip-vllm
 ```
@@ -133,7 +133,7 @@ python3 /data/clj/Project/XFDemo/finetune_qwen25vl/build_qwen25vl_dataset.py \
 建议先跑一次小样本：
 
 ```bash
-python3 /data/clj/Project/XFDemo/finetune_qwen25vl/build_qwen25vl_dataset.py \
+python3 /data/clj/Project/XFDemo/tools/training/qwen25vl/build_qwen25vl_dataset.py \
   --run-name smoke_test \
   --max-samples 20
 ```

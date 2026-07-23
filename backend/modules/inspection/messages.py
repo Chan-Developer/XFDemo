@@ -10,7 +10,14 @@ from backend.modules.inspection.parser import (
     suggestions_from_report,
 )
 from backend.config.paths import APPEARANCE_REFERENCE_IMAGE, INTERNAL_REFERENCE_IMAGE
-from backend.modules.inspection.prompts import AUTO_PROMPT, BEND_VERIFY_PROMPT, MISSING_EQUIPMENT_VERIFY_PROMPT, OUTLET_DIRECTION_VERIFY_PROMPT, STRICT_JUDGE_PROMPT_TEMPLATE
+from backend.modules.inspection.prompts import (
+    AUTO_PROMPT,
+    BEND_VERIFY_PROMPT,
+    MISSING_EQUIPMENT_VERIFY_PROMPT,
+    OPERATION_INSTRUCTION_VERIFY_PROMPT,
+    OUTLET_DIRECTION_VERIFY_PROMPT,
+    STRICT_JUDGE_PROMPT_TEMPLATE,
+)
 from backend.modules.inspection.utils import file_to_data_url
 from backend.modules.inspection.yolo_context import build_missing_equipment_fallback_prompt
 
@@ -207,6 +214,129 @@ def apply_missing_equipment_visibility_review(
         f"\u53ef\u89c1\u4f9d\u636e\uff1a{merged_evidence}",
         "\u9690\u60a3\u6807\u7b7e\uff1a" + ("\uff1b".join(labels) if labels else "\u65e0"),
         "\u5efa\u8bae\u9879\uff1a" + ("\uff1b".join(suggestions) if suggestions else "\u65e0"),
+    ])
+
+
+def build_operation_instruction_verify_messages(
+    image: str,
+    query: str,
+    first_report: str,
+    current_report: str,
+    yolo_result: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    prompt = (
+        OPERATION_INSTRUCTION_VERIFY_PROMPT
+        + "\n用户问题：" + query
+        + "\n当前外观 YOLO 线索：" + format_yolo_for_prompt(yolo_result)
+        + "\n首轮报告：\n" + first_report
+        + "\n当前待复核报告：\n" + current_report
+    )
+    return [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": image}},
+        {"type": "text", "text": prompt},
+    ]}]
+
+
+def parse_operation_instruction_verify(text: str) -> dict[str, Any] | None:
+    data = extract_json_object(text)
+    if not data:
+        return None
+    front_visible = bool(data.get("cabinet_front_sufficiently_visible"))
+    panel_visible = bool(data.get("instruction_panel_visible"))
+    readable = bool(data.get("instruction_readable"))
+    needs_manual = bool(data.get("needs_manual_review"))
+    confidence = str(data.get("confidence") or "低").strip()
+    missing_supported = (
+        front_visible
+        and not panel_visible
+        and bool(data.get("instruction_missing_supported"))
+        and not needs_manual
+        and confidence != "低"
+    )
+    unclear_supported = (
+        front_visible
+        and panel_visible
+        and bool(data.get("instruction_unclear_supported"))
+        and not needs_manual
+        and confidence != "低"
+    )
+    return {
+        "cabinet_front_sufficiently_visible": front_visible,
+        "instruction_panel_visible": panel_visible,
+        "instruction_readable": readable,
+        "instruction_missing_supported": missing_supported,
+        "instruction_unclear_supported": unclear_supported,
+        "needs_manual_review": needs_manual,
+        "evidence": str(data.get("evidence") or "").strip(),
+        "confidence": confidence,
+    }
+
+
+def _strip_operation_instruction_clauses(text: str) -> str:
+    instruction_terms = ("操作说明", "操作步骤", "操作方法", "使用说明", "使用方法")
+    clauses: list[str] = []
+    for raw in (text or "").replace("；", "。").split("。"):
+        for part in raw.split(";"):
+            clause = part.strip(" ，,;；。")
+            if not clause:
+                continue
+            if any(term in clause for term in instruction_terms):
+                continue
+            clauses.append(clause)
+    return "。".join(dict.fromkeys(clauses)).strip("。")
+
+
+def apply_operation_instruction_review(report: str, verify: dict[str, Any] | None) -> str:
+    if not verify:
+        return report
+    operation_label = "室内消火栓箱操作说明缺失或不清晰"
+    labels = list(labels_from_report(report))
+    supported = bool(
+        verify.get("instruction_missing_supported")
+        or verify.get("instruction_unclear_supported")
+    )
+    positive_presence = bool(
+        verify.get("instruction_panel_visible")
+        and verify.get("instruction_readable")
+    )
+    changed = False
+    if supported and operation_label not in labels:
+        labels.append(operation_label)
+        changed = True
+    elif positive_presence and operation_label in labels:
+        labels = [label for label in labels if label != operation_label]
+        changed = True
+    if not changed:
+        return report
+
+    scope = _pick_report_field(report, "检查范围") or "箱体外观"
+    suggestions = [
+        suggestion
+        for suggestion in suggestions_from_report(report)
+        if suggestion != operation_label
+    ]
+    retained_evidence = _strip_operation_instruction_clauses(
+        _pick_report_field(report, "可见依据") or ""
+    )
+    instruction_note = str(verify.get("evidence") or "").strip("；。 ")
+    if not instruction_note:
+        instruction_note = (
+            "消火栓箱正面和箱门主要区域清晰可见，未见操作步骤或使用方法说明。"
+            if supported
+            else "消火栓箱上可见操作说明面板，当前不支持判定操作说明缺失或不清晰。"
+        )
+    evidence_parts = [
+        part for part in (retained_evidence.strip("；。 "), instruction_note)
+        if part
+    ]
+    evidence = "；".join(dict.fromkeys(evidence_parts))
+    verdict = "不合规" if labels else "合规"
+    return "\n".join([
+        f"检查范围：{scope}",
+        f"结论：{verdict}",
+        f"可见依据：{evidence}",
+        "隐患标签：" + ("；".join(labels) if labels else "无"),
+        "建议项：" + ("；".join(suggestions) if suggestions else "无"),
     ])
 
 

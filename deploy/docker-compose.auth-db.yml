@@ -1,0 +1,22 @@
+services:
+  xf-postgres:
+    image: postgres:16-alpine
+    container_name: xf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-xfdemo}"
+      POSTGRES_USER: "${POSTGRES_USER:-xfdemo}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - xf-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xfdemo} -d ${POSTGRES_DB:-xfdemo}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  xf-postgres-data:
+    name: xf-postgres-data

@@ -12,6 +12,7 @@ import cv2
 import argparse
 import os
 import logging
+from pathlib import Path
 # ----------------------------------------------
 # 日志
 # ----------------------------------------------
@@ -432,7 +433,8 @@ def main():
                         help='输入图片路径')
     parser.add_argument('--prompt', type=str, default='请详细描述这张图片中的内容',
                         help='提示词')
-    parser.add_argument('--output_dir', type=str, default='./attention_outputs',
+    default_output_dir = Path(__file__).resolve().parents[3] / "output" / "research" / "vision_attention"
+    parser.add_argument('--output_dir', type=str, default=str(default_output_dir),
                         help='输出目录')
     parser.add_argument('--device', type=str, default='cuda:1',
                         help='设备 (cuda/cpu)')

@@ -1,7 +1,6 @@
 services:
   xf-backend:
-    # Enable hot-edit prompt.py on the host.
-    # Put a prompt.py next to docker-compose.yml, then restart backend to apply changes.
+    # Optional development mounts for backend hot reload/debugging.
     volumes:
-      - "./prompt.py:/app/prompt.py:ro"
-
+      - "../backend:/app/backend:ro"
+      - "../resources:/app/resources:ro"

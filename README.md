@@ -283,12 +283,17 @@ XFDemo/
 │       └── dataset/                 # 数据集查询服务
 ├── frontend/                        # Vue 3 + Vite
 ├── services/pipes_counting/         # 型材计数推理服务
-├── data_pipeline/                   # 数据处理与统计
-├── finetune_qwen25vl/               # 多模态微调数据构建
-├── resources/references/            # 合规参考图
+├── tools/
+│   ├── data_pipeline/               # 数据处理与统计
+│   ├── training/qwen25vl/           # 多模态微调数据构建
+│   └── research/vision_attention/   # 离线研究工具
+├── resources/                       # 参考图与演示样例
 ├── scripts/                         # 启动、推理和部署脚本
 ├── deploy/                          # Docker 与 Nginx 配置
-└── runtime/                         # 运行产物，不提交 Git
+├── archive/legacy/                  # 历史实现，仅供追溯
+├── artifacts/                       # 模型与导出物，不提交 Git
+├── output/                          # 离线任务产物，不提交 Git
+└── runtime/                         # 在线运行产物，不提交 Git
 ```
 
 ## 能力边界

@@ -4,3 +4,4 @@ langchain-openai==0.3.17
 langgraph==0.2.76
 anthropic==0.75.0
 Pillow==11.3.0
+psycopg2-binary==2.9.10

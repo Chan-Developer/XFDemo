@@ -10,21 +10,15 @@ This folder centralizes *deployment packaging* for XFDemo:
 
 Typical flow:
 
-1. Build + export images into `deploy/`:
+1. Build and export images into `output/deploy/images/`:
    `bash scripts/package_stack.sh`
-2. Copy `deploy/` to a target machine, then:
-   `docker load -i xf-backend-latest.tar`
-   `docker load -i xf-frontend-latest.tar`
-   `docker compose --env-file .env -f docker-compose.yml up -d`
+2. Keep compose and environment configuration in `deploy/`.
+3. Upload both image archives plus `deploy/docker-compose.yml` and
+   `deploy/.env`, then load the images and start the stack.
 
 Or do it in one command:
 
 `bash scripts/deploy_remote.sh user@host /path/to/deploy`
 
-Editing prompt without rebuilding:
-
-This repo ships a `deploy/prompt.py` that is meant to be edited on the target machine.
-
-1. Edit `prompt.py`
-2. Restart backend:
-   `docker compose -f docker-compose.yml restart xf-backend`
+Backend prompts and inspection rules are versioned under
+`backend/modules/inspection/`; rebuild the backend image after changing them.

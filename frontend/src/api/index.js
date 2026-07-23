@@ -3,6 +3,7 @@ import axios from 'axios'
 // 创建 axios 实例
 const api = axios.create({
   baseURL: '/api',
+  withCredentials: true,
   timeout: 120000, // 2分钟超时（AI分析需要时间）
   headers: {
     'Content-Type': 'application/json'
@@ -14,7 +15,9 @@ api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     const message = error.response?.data?.error || '服务器错误，请稍后重试'
-    return Promise.reject(new Error(message))
+    const requestError = new Error(message)
+    requestError.status = error.response?.status
+    return Promise.reject(requestError)
   }
 )
 
@@ -25,6 +28,14 @@ api.interceptors.response.use(
 export const checkHealth = () => {
   return api.get('/health')
 }
+
+export const registerAccount = (payload) => api.post('/auth/register', payload)
+
+export const loginAccount = (payload) => api.post('/auth/login', payload)
+
+export const logoutAccount = () => api.post('/auth/logout')
+
+export const fetchCurrentUser = () => api.get('/auth/me')
 
 /**
  * 消防安全检测
@@ -54,6 +65,7 @@ export const inspectFireStream = async ({ query, image, onChunk, onDone, signal 
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({ query, image }),
+    credentials: 'include',
     signal
   })
 

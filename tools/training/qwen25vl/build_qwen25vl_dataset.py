@@ -15,17 +15,16 @@ Useful debug usage:
     python3 build_qwen25vl_dataset.py --skip-vllm --max-samples 100 --output-root /tmp/qwen25_debug
 """
 
+from __future__ import annotations
 
 '''
-python3 /data/clj/Project/XFDemo/finetune_qwen25vl/build_qwen25vl_dataset.py --run-name baseline_qwen25vl
+python3 /data/clj/Project/XFDemo/tools/training/qwen25vl/build_qwen25vl_dataset.py --run-name baseline_qwen25vl
 
-python3 /data/clj/Project/XFDemo/finetune_qwen25vl/build_qwen25vl_dataset.py \
+python3 /data/clj/Project/XFDemo/tools/training/qwen25vl/build_qwen25vl_dataset.py \
     --run-name baseline_qwen25vl \
     --vllm-api-base http://127.0.0.1:你的端口/v1 \
     --model-name 你的模型名
 '''
-
-from __future__ import annotations
 
 import argparse
 import base64
@@ -46,7 +45,8 @@ from typing import Iterable
 
 
 DEFAULT_INPUT_ROOT = Path("/data/clj/data/XFData/室内消火栓")
-DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent / "output"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "output" / "training" / "qwen25vl"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 ALLOWED_SCENE_TYPES = {"室内消火栓箱", "室内消火栓", "非目标对象", "无法判断"}
 ALLOWED_DOOR_STATES = {"开启", "关闭", "半开", "不可见", "不适用"}

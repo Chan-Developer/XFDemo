@@ -7,14 +7,17 @@ from backend.infrastructure.ai.model_client import create_model_client
 from backend.modules.inspection.messages import (
     apply_bend_review,
     apply_missing_equipment_visibility_review,
+    apply_operation_instruction_review,
     apply_outlet_direction_review,
     build_bend_verify_messages,
     build_judge_messages,
     build_messages,
     build_missing_equipment_verify_messages,
+    build_operation_instruction_verify_messages,
     build_outlet_direction_verify_messages,
     parse_bend_verify,
     parse_missing_equipment_verify,
+    parse_operation_instruction_verify,
     parse_outlet_direction_verify,
 )
 from backend.modules.inspection.parser import (
@@ -186,6 +189,42 @@ class InspectionAgent:
 
         missing_review_candidates: list[str] = []
         specialist_context_report = raw_report if not scope_changed else final_report
+        if image and effective_task == "appearance":
+            stage_started = time.perf_counter()
+            operation_messages = build_operation_instruction_verify_messages(
+                image,
+                prepared.get("query", ""),
+                specialist_context_report,
+                final_report,
+                yolo_result=yolo_result,
+            )
+            operation_result = self.direction_model.invoke(operation_messages)
+            operation_text = trim_output(
+                strip_reasoning(operation_result.content),
+                self.settings.max_output_chars,
+            )
+            operation_data = parse_operation_instruction_verify(operation_text)
+            updated_report = apply_operation_instruction_review(final_report, operation_data)
+            usage = merge_usage(usage, operation_result.usage)
+            yolo_operation_visible = "操作说明" in set(yolo_labels_for_trace(yolo_result))
+            stages.append(trace_stage(
+                "operation_instruction_review",
+                "操作说明专项复核",
+                stage_started,
+                status="ok" if operation_data else "warn",
+                output=report_fields_for_trace(updated_report),
+                rawOutput=trim_output(operation_text, 600),
+                yoloOperationInstructionVisible=yolo_operation_visible,
+                changed=updated_report != final_report,
+                supported=bool(
+                    (operation_data or {}).get("instruction_missing_supported")
+                    or (operation_data or {}).get("instruction_unclear_supported")
+                ),
+                needsManualReview=bool((operation_data or {}).get("needs_manual_review")),
+                usage=operation_result.usage,
+            ))
+            final_report = updated_report
+
         if image and effective_task == "internal_components":
             # 读取隐患标签
             candidate_reports = [final_report]

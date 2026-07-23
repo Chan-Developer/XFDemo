@@ -255,7 +255,7 @@ const stats = computed(() => [
 <style scoped>
 .regulation-page {
   min-height: 100vh;
-  padding: calc(80px + var(--spacing-2xl)) 0 var(--spacing-3xl);
+  padding: 96px 0 40px;
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
@@ -269,8 +269,8 @@ const stats = computed(() => [
   display: flex;
   justify-content: space-between;
   gap: var(--spacing-xl);
-  padding: var(--spacing-2xl);
-  border: 1px solid var(--color-gray-100);
+  padding: 30px;
+  border: 1px solid var(--color-gray-200);
   border-radius: var(--radius-xl);
   background: var(--bg-primary);
   box-shadow: var(--shadow-sm);
@@ -285,7 +285,7 @@ const stats = computed(() => [
 
 .regulation-hero h1 {
   margin: var(--spacing-sm) 0 var(--spacing-md);
-  font-size: clamp(2rem, 3vw, 3.2rem);
+  font-size: clamp(2rem, 3vw, 2.65rem);
   line-height: 1.15;
   letter-spacing: 0;
 }
@@ -293,7 +293,7 @@ const stats = computed(() => [
 .regulation-hero p {
   max-width: 760px;
   color: var(--text-secondary);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
   line-height: 1.75;
 }
 
@@ -321,8 +321,8 @@ const stats = computed(() => [
   display: grid;
   gap: var(--spacing-sm);
   padding: var(--spacing-lg);
-  border: 1px solid var(--color-gray-100);
-  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
   background: var(--bg-primary);
   box-shadow: var(--shadow-sm);
 }
@@ -399,7 +399,7 @@ const stats = computed(() => [
 
 .stat-strip article {
   padding: var(--spacing-lg);
-  border: 1px solid var(--color-gray-100);
+  border: 1px solid var(--color-gray-200);
   border-radius: var(--radius-xl);
   background: var(--bg-primary);
   box-shadow: var(--shadow-sm);
@@ -430,7 +430,7 @@ const stats = computed(() => [
 .clause-panel,
 .detail-panel {
   padding: var(--spacing-lg);
-  border: 1px solid var(--color-gray-100);
+  border: 1px solid var(--color-gray-200);
   border-radius: var(--radius-xl);
   background: var(--bg-primary);
   box-shadow: var(--shadow-sm);

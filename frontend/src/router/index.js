@@ -1,10 +1,23 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { authActions, authState } from '@/stores/auth'
 
 const routes = [
   {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/AuthView.vue'),
+    meta: { public: true, authLayout: true }
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/AuthView.vue'),
+    meta: { public: true, authLayout: true }
+  },
+  {
     path: '/',
     name: 'Home',
-    component: () => import('@/views/HomeView.vue')
+    component: () => import('@/views/AboutView.vue')
   },
   {
     path: '/inspect',
@@ -48,14 +61,25 @@ const routes = [
   },
   {
     path: '/about',
-    name: 'About',
-    component: () => import('@/views/AboutView.vue')
+    redirect: '/'
   }
 ]
 
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+router.beforeEach(async (to) => {
+  await authActions.initialize()
+
+  if (!to.meta.public && !authState.user) {
+    return { name: 'Login', query: { redirect: to.fullPath } }
+  }
+  if (to.meta.authLayout && authState.user) {
+    return { name: 'Home' }
+  }
+  return true
 })
 
 export default router
