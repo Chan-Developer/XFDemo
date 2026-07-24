@@ -23,7 +23,29 @@ SUGGESTION_LABELS = [
     "室内消火栓箱门英文“FIRE HYDRANT”字样缺失或不清晰",
 ]
 
-ALLOWED_LABELS = INTERNAL_LABELS + APPEARANCE_LABELS
+
+OUTDOOR_HYDRANT_LABELS = [
+    "室外消火栓本体缺失或无法确认",
+    "室外消火栓被遮挡或圈占",
+    "室外消火栓明显破损或锈蚀",
+    "室外消火栓标识缺失或不可辨",
+]
+
+FIRE_EXTINGUISHER_LABELS = [
+    "灭火器缺失或数量不足",
+    "灭火器压力指示异常",
+    "灭火器压力指示器不可辨",
+    "灭火器喷管或压把缺失损坏",
+    "灭火器瓶体明显破损或锈蚀",
+    "灭火器被遮挡或取用受限",
+]
+
+ALLOWED_LABELS = INTERNAL_LABELS + APPEARANCE_LABELS + OUTDOOR_HYDRANT_LABELS + FIRE_EXTINGUISHER_LABELS
+BRANCH_LABELS = {
+    "indoor_hydrant": INTERNAL_LABELS + APPEARANCE_LABELS,
+    "outdoor_hydrant": OUTDOOR_HYDRANT_LABELS,
+    "fire_extinguisher": FIRE_EXTINGUISHER_LABELS,
+}
 
 
 LABEL_ALIASES = {

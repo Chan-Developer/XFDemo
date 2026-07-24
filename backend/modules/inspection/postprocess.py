@@ -357,18 +357,52 @@ def remove_unsupported_chinese_marking_label(labels: list[str], evidence: str) -
     return list(labels), False
 
 
-def format_judge_json(reviewed_text: str, raw_report: str = "") -> str | None:
+SUPPORTED_SCOPES = {
+    "\u7bb1\u4f53\u5916\u89c2",
+    "\u5185\u90e8\u7ec4\u4ef6",
+    "\u5ba4\u5916\u6d88\u706b\u6813",
+    "\u706d\u706b\u5668",
+    "\u65e0\u6cd5\u5224\u65ad",
+}
+
+
+def normalize_inspection_scope(scope: str, expected_scope: str = "") -> str:
+    expected = (expected_scope or "").strip()
+    if expected in SUPPORTED_SCOPES - {"\u65e0\u6cd5\u5224\u65ad"}:
+        return expected
+
+    candidate = (scope or "").strip()
+    if "\u5ba4\u5916" in candidate and "\u6d88\u706b\u6813" in candidate:
+        return "\u5ba4\u5916\u6d88\u706b\u6813"
+    if "\u706d\u706b\u5668" in candidate:
+        return "\u706d\u706b\u5668"
+    if "\u5916\u89c2" in candidate:
+        return "\u7bb1\u4f53\u5916\u89c2"
+    if "\u5185\u90e8" in candidate:
+        return "\u5185\u90e8\u7ec4\u4ef6"
+    return candidate if candidate in SUPPORTED_SCOPES else "\u65e0\u6cd5\u5224\u65ad"
+
+
+def enforce_report_scope(report: str, expected_scope: str) -> str:
+    normalized = normalize_inspection_scope("", expected_scope)
+    if not report or normalized == "\u65e0\u6cd5\u5224\u65ad":
+        return report
+    scope_pattern = re.compile(r"(^\s*\u68c0\u67e5\u8303\u56f4\s*[:\uff1a]\s*)[^\n]+", re.MULTILINE)
+    if scope_pattern.search(report):
+        return scope_pattern.sub(rf"\g<1>{normalized}", report, count=1)
+    return f"\u68c0\u67e5\u8303\u56f4\uff1a{normalized}\n{report}".strip()
+
+
+def format_judge_json(
+    reviewed_text: str,
+    raw_report: str = "",
+    expected_scope: str = "",
+) -> str | None:
     data = extract_json_object(reviewed_text)
     if not data:
         return None
     labels = normalize_label_list(data.get("labels"))
-    scope = str(data.get("scope") or "\u65e0\u6cd5\u5224\u65ad").strip()
-    if "\u5916\u89c2" in scope:
-        scope = "\u7bb1\u4f53\u5916\u89c2"
-    elif "\u5185\u90e8" in scope:
-        scope = "\u5185\u90e8\u7ec4\u4ef6"
-    elif scope not in {"\u7bb1\u4f53\u5916\u89c2", "\u5185\u90e8\u7ec4\u4ef6", "\u65e0\u6cd5\u5224\u65ad"}:
-        scope = "\u65e0\u6cd5\u5224\u65ad"
+    scope = normalize_inspection_scope(str(data.get("scope") or ""), expected_scope)
     verdict = str(data.get("verdict") or "\u65e0\u6cd5\u5224\u65ad").strip()
     if verdict not in {"\u5408\u89c4", "\u4e0d\u5408\u89c4", "\u65e0\u6cd5\u5224\u65ad"}:
         verdict = "\u4e0d\u5408\u89c4" if labels else "\u65e0\u6cd5\u5224\u65ad"
@@ -449,7 +483,11 @@ def format_judge_json(reviewed_text: str, raw_report: str = "") -> str | None:
     ])
 
 
-def guarded_format_judge_json(reviewed_text: str, raw_report: str) -> str | None:
+def guarded_format_judge_json(
+    reviewed_text: str,
+    raw_report: str,
+    expected_scope: str = "",
+) -> str | None:
     data = extract_json_object(reviewed_text)
     if not data:
         return None
@@ -469,5 +507,9 @@ def guarded_format_judge_json(reviewed_text: str, raw_report: str) -> str | None
         data["confidence"] = "低"
         needs_manual = True
 
-    formatted = format_judge_json(json.dumps(data, ensure_ascii=False), raw_report=raw_report)
+    formatted = format_judge_json(
+        json.dumps(data, ensure_ascii=False),
+        raw_report=raw_report,
+        expected_scope=expected_scope,
+    )
     return formatted

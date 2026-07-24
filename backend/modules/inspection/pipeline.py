@@ -1,9 +1,8 @@
 import time
-from typing import Any
-
-from backend.infrastructure.vision.yolo_detector import run_yolo_detection
+from typing import Any, Callable
 
 from backend.infrastructure.ai.model_client import create_model_client
+from backend.infrastructure.vision.yolo_detector import run_yolo_detection
 from backend.modules.inspection.messages import (
     apply_bend_review,
     apply_missing_equipment_visibility_review,
@@ -30,12 +29,30 @@ from backend.modules.inspection.parser import (
     sanitize_final_report,
 )
 from backend.modules.inspection.output_formatter import format_public_report
-from backend.modules.inspection.postprocess import guarded_format_judge_json
+from backend.modules.inspection.postprocess import enforce_report_scope, guarded_format_judge_json
 from backend.config.settings import get_settings
 from backend.modules.inspection.trace import build_trace_summary, trace_stage
+from backend.modules.inspection.registry import get_branch
+from backend.modules.inspection.router import resolve_yolo_route, route_trace_payload
 from backend.modules.inspection.types import InspectionState, Settings
 from backend.modules.inspection.utils import normalize_image, strip_reasoning, trim_output
 from backend.modules.inspection.yolo_context import apply_yolo_backstop, missing_equipment_fallback_labels, yolo_labels_for_trace, MISSING_EQUIPMENT_LABELS
+
+
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def expected_scope_for_branch(branch_key: str, task: str) -> str:
+    if branch_key == "outdoor_hydrant":
+        return "室外消火栓"
+    if branch_key == "fire_extinguisher":
+        return "灭火器"
+    return "箱体外观" if task == "appearance" else "内部组件"
+
+
+def emit_progress(callback: ProgressCallback | None, **payload: Any) -> None:
+    if callback:
+        callback(payload)
 
 
 def prepare_input(state: InspectionState) -> InspectionState:
@@ -73,10 +90,111 @@ class InspectionAgent:
             "task": (data or {}).get("task", ""),
         })
 
-    def invoke(self, data: dict[str, Any]) -> InspectionState:
+    def invoke(
+        self,
+        data: dict[str, Any],
+        progress_callback: ProgressCallback | None = None,
+    ) -> InspectionState:
+        pipeline_started = time.perf_counter()
+        emit_progress(
+            progress_callback,
+            stage="prepare",
+            status="running",
+            label="正在准备检测任务",
+            detail="校验图片并建立本次可追溯任务",
+        )
         prepared = self.prepare(data)
         stages: list[dict[str, Any]] = []
+        image = prepared.get("image")
+        emit_progress(
+            progress_callback,
+            stage="prepare",
+            status="complete",
+            label="检测任务已准备",
+            elapsedMs=int((time.perf_counter() - pipeline_started) * 1000),
+        )
 
+        intent, yolo_result, route_meta = resolve_yolo_route(
+            image,
+            prepared.get("query", ""),
+            explicit_task=(data or {}).get("inspection_type") or (data or {}).get("task"),
+            progress_callback=progress_callback,
+        )
+        branch = get_branch(intent.inspection_type)
+        requested_task = str(prepared.get("task") or "auto")
+        prepared["inspection_type"] = intent.inspection_type
+        prepared["inspection_name"] = branch.name
+        prepared["intent"] = route_trace_payload(intent, route_meta)
+        route_task = str(route_meta.get("selectedTask") or branch.default_task)
+        judge_task = route_task
+        expected_scope = expected_scope_for_branch(branch.key, route_task)
+        prepared["task"] = requested_task if branch.key == "indoor_hydrant" else route_task
+        prepared["messages"] = build_messages(
+            query=prepared["query"],
+            image=image,
+            task=route_task,
+            branch_key=branch.key,
+            yolo_result=yolo_result,
+        )
+        stages.append({
+            "id": "intent_router",
+            "name": "yolo_router",
+            "title": "目标识别与任务分流",
+            "status": "ok" if route_meta.get("source") != "rule_fallback" else "warn",
+            "durationMs": route_meta.get("latencyMs", 0),
+            "inspectionType": intent.inspection_type,
+            "inspectionName": branch.name,
+            "scopeHint": intent.scope_hint,
+            "confidence": intent.confidence,
+            "source": intent.source,
+            "output": intent.evidence,
+            "usage": {},
+            "selectedTask": route_task,
+            "selectedReason": route_meta.get("selectedReason", ""),
+            "probes": prepared["intent"].get("probes", []),
+            "branch": {
+                "defaultTask": branch.default_task,
+                "yoloTask": judge_task,
+                "promptProfile": branch.prompt_profile,
+                "reviewers": list(branch.reviewers),
+            },
+        })
+        for probe in route_meta.get("probes") or []:
+            stages.append({
+                "name": f"route_probe_{probe.get('task')}",
+                "title": {
+                    "internal_components": "室内组件定位",
+                    "appearance": "室内箱体定位",
+                    "outdoor_hydrant": "室外消火栓定位",
+                    "fire_extinguisher": "灭火器定位",
+                }.get(probe.get("task"), "目标定位"),
+                "status": "ok" if probe.get("matched") else "skipped",
+                "durationMs": probe.get("durationMs", 0),
+                "detectionCount": probe.get("detectionCount", 0),
+                "labels": probe.get("labels", []),
+                "reason": probe.get("reason", ""),
+                "matched": bool(probe.get("matched")),
+                "adopted": probe.get("task") == route_task,
+                "usage": {},
+            })
+        emit_progress(
+            progress_callback,
+            stage="route",
+            status="complete",
+            label=f"已进入{branch.name}检测任务",
+            detail=route_meta.get("selectedReason", ""),
+            elapsedMs=route_meta.get("latencyMs", 0),
+            inspectionType=branch.key,
+        )
+
+        emit_progress(
+            progress_callback,
+            stage="analysis",
+            status="running",
+            label=f"正在分析{branch.name}现场状态",
+            detail="结合原图与目标定位线索生成初步判断",
+            inspectionType=branch.key,
+        )
         stage_started = time.perf_counter()
         first = self.model.invoke(prepared["messages"])
         raw_report = trim_output(strip_reasoning(first.content), self.settings.max_output_chars)
@@ -89,41 +207,81 @@ class InspectionAgent:
             output=report_fields_for_trace(raw_report),
             usage=first.usage,
         ))
+        first_duration_ms = stages[-1]["durationMs"]
+        emit_progress(
+            progress_callback,
+            stage="analysis",
+            status="complete",
+            label="初步分析已完成",
+            detail="正在进入证据复核",
+            elapsedMs=first_duration_ms,
+            usage=first.usage,
+            throughput=stages[-1].get("throughput", {}),
+        )
         final_report = raw_report
         usage = dict(first.usage)
         reviewed_text = ""
 
-        image = prepared.get("image")
-        judge_task = prepared.get("task") or "auto"
-        effective_task = judge_task
-        yolo_result: dict[str, Any] = {"enabled": False, "detections": [], "reason": "no image"}
-        if image:
-            judge_task = detect_task(prepared.get("query", ""), prepared.get("task"), raw_report)
+        # YOLO chooses the indoor branch, while the established indoor flow
+        # still decides appearance vs. internal components from the first VLM
+        # report and reruns the matching detector when needed.
+        if image and branch.key == "indoor_hydrant":
+            judge_task = detect_task(prepared.get("query", ""), requested_task, raw_report)
             if judge_task == "auto":
-                judge_task = "internal_components" if "\u5185\u90e8" in raw_report else "appearance"
+                judge_task = "internal_components" if "内部" in raw_report else "appearance"
+            expected_scope = expected_scope_for_branch(branch.key, judge_task)
+            desired_type = "appearance_presence" if judge_task == "appearance" else "component_presence"
+            current_type = str(yolo_result.get("modelType") or "")
+            if current_type != desired_type:
+                stage_started = time.perf_counter()
+                aligned_result = run_yolo_detection(image, task=judge_task)
+                stages.append(trace_stage(
+                    "yolo_appearance_align" if judge_task == "appearance" else "yolo_internal_align",
+                    "YOLO 范围对齐复跑（箱体外观）" if judge_task == "appearance" else "YOLO 范围对齐复跑（内部组件）",
+                    stage_started,
+                    status="skipped" if aligned_result.get("skipped") else (
+                        "warn" if aligned_result.get("reason") else (
+                            "ok" if aligned_result.get("enabled") else "warn"
+                        )
+                    ),
+                    detectionCount=len(aligned_result.get("detections") or []),
+                    labels=yolo_labels_for_trace(aligned_result),
+                    reason=aligned_result.get("reason", ""),
+                    imageSize={
+                        "width": aligned_result.get("imageWidth", 0),
+                        "height": aligned_result.get("imageHeight", 0),
+                    },
+                    modelScope=aligned_result.get("modelScope", ""),
+                    adopted=True,
+                ))
+                yolo_result = aligned_result
+            prepared["task"] = judge_task
 
+        effective_task = judge_task
+        if image:
+            emit_progress(
+                progress_callback,
+                stage="review",
+                status="running",
+                label=f"正在复核{branch.name}检测证据",
+                detail="核对初步结论与原图证据的一致性",
+            )
             stage_started = time.perf_counter()
-            yolo_result = run_yolo_detection(image, task=judge_task)
-            yolo_stage_id = "yolo_appearance" if judge_task == "appearance" else "yolo_internal"
-            yolo_stage_name = "YOLO \u7bb1\u4f53\u5916\u89c2\u8f85\u52a9\u68c0\u6d4b" if judge_task == "appearance" else "YOLO \u5185\u90e8\u7ec4\u4ef6\u8f85\u52a9\u68c0\u6d4b"
-            stages.append(trace_stage(
-                yolo_stage_id,
-                yolo_stage_name,
-                stage_started,
-                status="skipped" if yolo_result.get("skipped") else ("warn" if yolo_result.get("reason") else ("ok" if yolo_result.get("enabled") else "warn")),
-                detectionCount=len(yolo_result.get("detections") or []),
-                labels=yolo_labels_for_trace(yolo_result),
-                reason=yolo_result.get("reason", ""),
-                imageSize={"width": yolo_result.get("imageWidth", 0), "height": yolo_result.get("imageHeight", 0)},
-                modelScope=yolo_result.get("modelScope", ""),
-                adopted=True,
-            ))
-
-            stage_started = time.perf_counter()
-            judge_messages = build_judge_messages(prepared.get("query", ""), image, raw_report, judge_task, yolo_result=yolo_result)
+            judge_messages = build_judge_messages(
+                prepared.get("query", ""),
+                image,
+                raw_report,
+                judge_task,
+                yolo_result=yolo_result,
+                branch_key=branch.key,
+            )
             reviewed = self.judge_model.invoke(judge_messages)
             reviewed_text = trim_output(strip_reasoning(reviewed.content), self.settings.max_output_chars)
-            formatted_review = guarded_format_judge_json(reviewed_text, raw_report)
+            formatted_review = guarded_format_judge_json(
+                reviewed_text,
+                raw_report,
+                expected_scope=expected_scope,
+            )
             if formatted_review:
                 final_report = formatted_review
                 # 判断模型是否输出了结构化报告
@@ -147,49 +305,30 @@ class InspectionAgent:
                 fallbackLabels=fallback_labels,
                 usage=reviewed.usage,
             ))
+            emit_progress(
+                progress_callback,
+                stage="review",
+                status="complete",
+                label="综合证据复核已完成",
+                elapsedMs=stages[-1]["durationMs"],
+                usage=reviewed.usage,
+                throughput=stages[-1].get("throughput", {}),
+            )
 
         final_report = sanitize_final_report(final_report)
         scope_changed = False
-        if image:
-            final_scope = report_fields_for_trace(final_report).get("scope") or ""
-            desired_task = "appearance" if final_scope == "\u7bb1\u4f53\u5916\u89c2" else ("internal_components" if final_scope == "\u5185\u90e8\u7ec4\u4ef6" else "")
-            effective_task = desired_task or judge_task
-            scope_changed = bool(desired_task and desired_task != judge_task)
-            desired_type = "appearance_presence" if desired_task == "appearance" else ("component_presence" if desired_task == "internal_components" else "")
-            current_type = str(yolo_result.get("modelType") or "")
-            if desired_task and current_type != desired_type:
-                stage_started = time.perf_counter()
-                aligned_result = run_yolo_detection(image, task=desired_task)
-                if scope_changed:
-                    for previous_stage in reversed(stages):
-                        if previous_stage.get("name") in {"yolo_internal", "yolo_appearance"}:
-                            previous_stage["status"] = "skipped"
-                            previous_stage["adopted"] = False
-                            previous_stage["superseded"] = True
-                            previous_stage["reason"] = (
-                                "\u6700\u7ec8\u68c0\u67e5\u8303\u56f4\u5df2\u8c03\u6574\uff0c\u672c\u9636\u6bb5\u5019\u9009\u6846\u4ec5\u4fdd\u7559\u7528\u4e8e\u8ffd\u6eaf\uff0c"
-                                "\u4e0d\u53c2\u4e0e\u6700\u7ec8\u7ed3\u8bba\u3002"
-                            )
-                            break
-                aligned_stage_id = "yolo_appearance_align" if desired_task == "appearance" else "yolo_internal_align"
-                aligned_stage_name = "YOLO \u8303\u56f4\u5bf9\u9f50\u590d\u8dd1\uff08\u7bb1\u4f53\u5916\u89c2\uff09" if desired_task == "appearance" else "YOLO \u8303\u56f4\u5bf9\u9f50\u590d\u8dd1\uff08\u5185\u90e8\u7ec4\u4ef6\uff09"
-                stages.append(trace_stage(
-                    aligned_stage_id,
-                    aligned_stage_name,
-                    stage_started,
-                    status="skipped" if aligned_result.get("skipped") else ("warn" if aligned_result.get("reason") else ("ok" if aligned_result.get("enabled") else "warn")),
-                    detectionCount=len(aligned_result.get("detections") or []),
-                    labels=yolo_labels_for_trace(aligned_result), # 把 YOLO 输出转换成日志可展示标签
-                    reason=aligned_result.get("reason", ""),
-                    imageSize={"width": aligned_result.get("imageWidth", 0), "height": aligned_result.get("imageHeight", 0)},
-                    modelScope=aligned_result.get("modelScope", ""),
-                    adopted=True,
-                ))
-                yolo_result = aligned_result
 
         missing_review_candidates: list[str] = []
         specialist_context_report = raw_report if not scope_changed else final_report
-        if image and effective_task == "appearance":
+        if image and branch.key == "indoor_hydrant":
+            emit_progress(
+                progress_callback,
+                stage="specialist",
+                status="running",
+                label="正在核验关键隐患",
+                detail="仅对已触发的室内专项进行针对性校验",
+            )
+        if image and branch.key == "indoor_hydrant" and effective_task == "appearance":
             stage_started = time.perf_counter()
             operation_messages = build_operation_instruction_verify_messages(
                 image,
@@ -225,7 +364,7 @@ class InspectionAgent:
             ))
             final_report = updated_report
 
-        if image and effective_task == "internal_components":
+        if image and branch.key == "indoor_hydrant" and effective_task == "internal_components":
             # 读取隐患标签
             candidate_reports = [final_report]
             if not scope_changed:
@@ -234,7 +373,7 @@ class InspectionAgent:
                 # 定义哪些标签属于组件缺失
                 if label in MISSING_EQUIPMENT_LABELS and label not in missing_review_candidates:
                     missing_review_candidates.append(label)
-        if image and effective_task == "internal_components" and missing_review_candidates:
+        if image and branch.key == "indoor_hydrant" and effective_task == "internal_components" and missing_review_candidates:
             stage_started = time.perf_counter()
             verify_messages = build_missing_equipment_verify_messages(
                 image,
@@ -263,7 +402,7 @@ class InspectionAgent:
 
         bend_label = "消防软管卷盘供水管道折弯严重"
         bend_candidate = has_bend_candidate(raw_report, reviewed_text, final_report)
-        if image and effective_task == "internal_components" and (
+        if image and branch.key == "indoor_hydrant" and effective_task == "internal_components" and (
             bend_candidate or bend_label in labels_from_report(final_report)
         ):
             stage_started = time.perf_counter()
@@ -297,7 +436,7 @@ class InspectionAgent:
         yolo_components = set(yolo_labels_for_trace(yolo_result))
         direction_candidate = direction_label in labels_from_report(final_report)
         direction_components_visible = "接口" in yolo_components and bool({"栓体", "阀门"} & yolo_components)
-        if image and effective_task == "internal_components" and (
+        if image and branch.key == "indoor_hydrant" and effective_task == "internal_components" and (
             direction_candidate or direction_components_visible
         ):
             stage_started = time.perf_counter()
@@ -329,13 +468,42 @@ class InspectionAgent:
             ))
             final_report = updated_report
 
+        if image and branch.key == "indoor_hydrant":
+            emit_progress(
+                progress_callback,
+                stage="specialist",
+                status="complete",
+                label="关键隐患核验已完成",
+                detail="专项结果只修正其负责的标签与证据",
+            )
+
+        emit_progress(
+            progress_callback,
+            stage="report",
+            status="running",
+            label="正在生成检测报告",
+            detail="整理最终标签、对应证据与巡检建议",
+        )
         final_report = apply_yolo_backstop(final_report, raw_report, yolo_result)
+        final_report = enforce_report_scope(final_report, expected_scope)
         trace = {
-            "version": "qwen-yolo-judge-v2",
+            "version": "yolo-priority-router-branch-judge-v2",
+            "inspectionType": intent.inspection_type,
+            "inspectionName": branch.name,
             "stages": stages,
             "summary": build_trace_summary(raw_report, final_report, yolo_result, stages),
         }
         public_report = format_public_report(final_report, yolo_result=yolo_result)
+        emit_progress(
+            progress_callback,
+            stage="report",
+            status="complete",
+            label="检测报告已生成",
+            detail=f"本次任务总耗时 {int((time.perf_counter() - pipeline_started) * 1000)}ms",
+            elapsedMs=int((time.perf_counter() - pipeline_started) * 1000),
+            usage=usage,
+            throughput=trace["summary"].get("usage", {}),
+        )
         return {
             **prepared,
             "raw_report": raw_report,
@@ -346,8 +514,12 @@ class InspectionAgent:
             "trace": trace,
         }
 
-    def stream_checked(self, data: dict[str, Any]) -> InspectionState:
-        return self.invoke(data)
+    def stream_checked(
+        self,
+        data: dict[str, Any],
+        progress_callback: ProgressCallback | None = None,
+    ) -> InspectionState:
+        return self.invoke(data, progress_callback=progress_callback)
 
     def stream(self, messages: list[dict[str, Any]]):
         return self.model.stream(messages)

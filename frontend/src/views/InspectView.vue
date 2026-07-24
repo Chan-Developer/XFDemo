@@ -13,6 +13,7 @@ const isLoading = ref(false)
 const error = ref('')
 const yoloResult = ref(null)
 const traceResult = ref(null)
+const progressEvents = ref([])
 const abortController = ref(null)
 const STREAM_RENDER_INTERVAL = 120
 let streamedResult = ''
@@ -53,6 +54,43 @@ const yoloStatusText = computed(() => {
 const formatConfidence = (value) => `${Math.round((Number(value) || 0) * 100)}%`
 const traceStages = computed(() => traceResult.value?.stages || [])
 const traceIssues = computed(() => traceResult.value?.summary?.issues || [])
+const progressStages = [
+  { id: 'prepare', label: '准备任务', hint: '校验图片与检测参数' },
+  { id: 'route', label: '识别巡检对象', hint: '确定设施类型与检测分支' },
+  { id: 'analysis', label: '执行专项分析', hint: '理解现场状态与可见组件' },
+  { id: 'review', label: '复核检测证据', hint: '校验结论和图像证据' },
+  { id: 'specialist', label: '核验关键隐患', hint: '按需执行针对性校验', optional: true },
+  { id: 'report', label: '生成检测报告', hint: '汇总标签、证据与建议' }
+]
+const latestProgress = computed(() => progressEvents.value.at(-1) || {
+  stage: 'prepare',
+  status: 'running',
+  label: '正在建立检测任务',
+  detail: '图片上传完成后将按步骤执行'
+})
+const progressByStage = computed(() => {
+  const grouped = {}
+  progressEvents.value.forEach((event) => {
+    grouped[event.stage] = event
+  })
+  return grouped
+})
+const visibleProgressStages = computed(() => progressStages.filter((stage) => {
+  if (!stage.optional) return true
+  return progressEvents.value.some((event) => event.stage === stage.id)
+}))
+const progressStatus = (stage) => {
+  const event = progressByStage.value[stage.id]
+  if (event?.status === 'complete') return 'complete'
+  if (latestProgress.value.stage === stage.id) return 'running'
+  return 'pending'
+}
+const tokenSnapshot = computed(() => {
+  const finalUsage = traceResult.value?.summary?.usage
+  if (finalUsage) return finalUsage
+  const event = [...progressEvents.value].reverse().find((item) => item.throughput)
+  return event?.throughput || {}
+})
 const formatDuration = (value) => `${Number(value || 0)}ms`
 const stageStatusText = (stage) => {
   if (stage?.superseded) return '\u5df2\u4f5c\u5e9f'
@@ -82,6 +120,7 @@ const handleImageUpload = (base64) => {
   error.value = ''
   yoloResult.value = null
   traceResult.value = null
+  progressEvents.value = []
 }
 
 const handleImageRemove = () => {
@@ -91,6 +130,7 @@ const handleImageRemove = () => {
   error.value = ''
   yoloResult.value = null
   traceResult.value = null
+  progressEvents.value = []
 }
 
 const abortActiveRequest = () => {
@@ -109,6 +149,7 @@ const handleSubmit = async () => {
   result.value = ''
   yoloResult.value = null
   traceResult.value = null
+  progressEvents.value = []
   streamedResult = ''
   const controller = new AbortController()
   abortController.value = controller
@@ -121,6 +162,9 @@ const handleSubmit = async () => {
       onChunk: (delta) => {
         streamedResult += delta
         scheduleStreamRender()
+      },
+      onProgress: (payload) => {
+        progressEvents.value.push(payload)
       }
     })
 
@@ -150,6 +194,7 @@ const handleReset = () => {
   error.value = ''
   yoloResult.value = null
   traceResult.value = null
+  progressEvents.value = []
 }
 
 const escapeHtml = (value) => String(value || '')
@@ -217,7 +262,7 @@ onBeforeUnmount(() => {
           上传消防栓图片，AI将自动分析并生成检测报告
         </p>
       </header>
-      
+
       <!-- Main Content -->
       <div class="inspect__content">
         <!-- Input Section -->
@@ -225,29 +270,29 @@ onBeforeUnmount(() => {
           <div class="inspect__card card">
             <h2 class="inspect__card-title">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" 
+                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14"
                       stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M14 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/>
               </svg>
               上传消防栓图片
             </h2>
-            <ImageUploader 
-              @upload="handleImageUpload" 
-              @remove="handleImageRemove" 
+            <ImageUploader
+              @upload="handleImageUpload"
+              @remove="handleImageRemove"
             />
-            
+
             <div class="inspect__hint">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                       stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <span>上传图片后，系统将自动检测消防栓存在的异常</span>
             </div>
           </div>
-          
+
           <div class="inspect__actions">
-            <button 
+            <button
               class="btn btn-primary btn-lg inspect__submit"
               :disabled="!canSubmit"
               @click="handleSubmit"
@@ -258,15 +303,15 @@ onBeforeUnmount(() => {
               </template>
               <template v-else>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" 
-                        stroke="currentColor" stroke-width="2" 
+                  <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <span>开始检测</span>
               </template>
             </button>
-            
-            <button 
+
+            <button
               v-if="result || error"
               class="btn btn-secondary btn-lg"
               @click="handleReset"
@@ -275,24 +320,24 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </div>
-        
+
         <!-- Result Section -->
         <div class="inspect__result-section">
           <div class="inspect__card card inspect__result-card">
             <h2 class="inspect__card-title">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" 
-                      stroke="currentColor" stroke-width="1.5" 
+                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      stroke="currentColor" stroke-width="1.5"
                       stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               检测报告
             </h2>
-            
+
             <!-- Error State -->
             <div v-if="error" class="inspect__error">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
-                      stroke="currentColor" stroke-width="1.5" 
+                <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      stroke="currentColor" stroke-width="1.5"
                       stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <p>{{ error }}</p>
@@ -343,15 +388,60 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div v-if="isLoading && !result" class="inspect__loading">
-                <LoadingSpinner size="lg" text="AI正在分析图片，请稍候..." />
+                <div class="inspect-progress">
+                  <div class="inspect-progress__head">
+                    <div class="inspect-progress__pulse" aria-hidden="true">
+                      <span></span>
+                    </div>
+                    <div>
+                      <span>检测进行中</span>
+                      <strong>{{ latestProgress.label }}</strong>
+                      <p>{{ latestProgress.detail }}</p>
+                    </div>
+                  </div>
+
+                  <ol class="inspect-progress__steps">
+                    <li
+                      v-for="(stage, index) in visibleProgressStages"
+                      :key="stage.id"
+                      :class="`is-${progressStatus(stage)}`"
+                    >
+                      <span class="inspect-progress__index">
+                        <svg v-if="progressStatus(stage) === 'complete'" width="14" height="14" viewBox="0 0 24 24" fill="none">
+                          <path d="M5 12.5l4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <template v-else>{{ String(index + 1).padStart(2, '0') }}</template>
+                      </span>
+                      <span>
+                        <strong>{{ stage.label }}</strong>
+                        <small>{{ stage.hint }}</small>
+                      </span>
+                    </li>
+                  </ol>
+
+                  <div v-if="tokenSnapshot.totalTokens" class="inspect-progress__metrics">
+                    <span>
+                      <small>输入 Token</small>
+                      <strong>{{ tokenSnapshot.inputTokens || 0 }}</strong>
+                    </span>
+                    <span>
+                      <small>输出 Token</small>
+                      <strong>{{ tokenSnapshot.outputTokens || 0 }}</strong>
+                    </span>
+                    <span>
+                      <small>输出速率</small>
+                      <strong>{{ tokenSnapshot.outputTokensPerSecond || 0 }} t/s</strong>
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
             <!-- Empty State -->
             <div v-else class="inspect__empty">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" 
-                      stroke="currentColor" stroke-width="1.5" 
+                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                      stroke="currentColor" stroke-width="1.5"
                       stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <p>上传消防栓图片后<br />检测报告将显示在这里</p>
@@ -475,6 +565,184 @@ onBeforeUnmount(() => {
   justify-content: center;
   text-align: center;
   padding: var(--spacing-2xl);
+}
+
+.inspect__loading {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 6px 2px 2px;
+  text-align: left;
+}
+
+.inspect-progress {
+  width: 100%;
+  padding: 20px;
+  border: 1px solid #eadfdd;
+  border-radius: var(--radius-lg);
+  background: #fcfbfa;
+}
+
+.inspect-progress__head {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #ebe4e2;
+}
+
+.inspect-progress__pulse {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: #f8e8e6;
+}
+
+.inspect-progress__pulse span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 0 rgba(204, 70, 61, .28);
+  animation: progress-pulse 1.8s ease-out infinite;
+}
+
+.inspect-progress__head > div:last-child > span {
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.inspect-progress__head strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-primary);
+  font-size: 17px;
+}
+
+.inspect-progress__head p {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.inspect-progress__steps {
+  display: grid;
+  gap: 0;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inspect-progress__steps li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 56px;
+  color: var(--text-tertiary);
+}
+
+.inspect-progress__steps li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 27px;
+  bottom: 2px;
+  left: 13px;
+  width: 1px;
+  background: #e5dddb;
+}
+
+.inspect-progress__index {
+  z-index: 1;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #ded7d5;
+  border-radius: 50%;
+  background: #fff;
+  color: #a39b99;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.inspect-progress__steps strong,
+.inspect-progress__steps small {
+  display: block;
+}
+
+.inspect-progress__steps strong {
+  padding-top: 2px;
+  color: inherit;
+  font-size: 14px;
+}
+
+.inspect-progress__steps small {
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.inspect-progress__steps .is-running {
+  color: var(--text-primary);
+}
+
+.inspect-progress__steps .is-running .inspect-progress__index {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 0 0 4px #f8e8e6;
+}
+
+.inspect-progress__steps .is-complete {
+  color: #4e665d;
+}
+
+.inspect-progress__steps .is-complete .inspect-progress__index {
+  border-color: #cfe1d8;
+  background: #e7f2ec;
+  color: #36765b;
+}
+
+.inspect-progress__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin-top: 2px;
+  border: 1px solid #e8e0de;
+  border-radius: var(--radius-md);
+  background: #e8e0de;
+}
+
+.inspect-progress__metrics span {
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.inspect-progress__metrics small,
+.inspect-progress__metrics strong {
+  display: block;
+}
+
+.inspect-progress__metrics small {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.inspect-progress__metrics strong {
+  margin-top: 2px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+@keyframes progress-pulse {
+  70% { box-shadow: 0 0 0 9px rgba(204, 70, 61, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(204, 70, 61, 0); }
 }
 
 .inspect__empty svg,

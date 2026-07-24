@@ -28,6 +28,9 @@ const ui = {
 
 const cards = computed(() => [
   { label: '\u6700\u8fd1\u8bb0\u5f55', value: payload.value.total || 0, hint: `\u6709\u8ffd\u8e2a ${payload.value.withTrace || 0}` },
+  { label: '输入 Token', value: payload.value.usage?.inputTokens || 0, hint: `${payload.value.usage?.inputTokensPerSecond || 0} token/s` },
+  { label: '输出 Token', value: payload.value.usage?.outputTokens || 0, hint: `${payload.value.usage?.outputTokensPerSecond || 0} token/s` },
+  { label: '平均耗时', value: `${payload.value.usage?.avgDurationMs || 0}ms`, hint: '按最近可追溯任务统计' },
   { label: '\u521d\u68c0\u88ab\u4fee\u6b63', value: payload.value.qwenCorrected || 0, hint: 'QwenVL \u4e0e\u6700\u7ec8\u4e0d\u4e00\u81f4' },
   { label: 'YOLO \u53ef\u80fd\u6f0f\u68c0', value: payload.value.yoloPossibleMiss || 0, hint: '\u6700\u7ec8\u6807\u7b7e\u6ca1\u6709\u5019\u9009\u6846' },
   { label: 'YOLO \u53ef\u80fd\u8bef\u62a5', value: payload.value.yoloPossibleFalsePositive || 0, hint: '\u5019\u9009\u6846\u672a\u88ab\u6700\u7ec8\u91c7\u7eb3' },

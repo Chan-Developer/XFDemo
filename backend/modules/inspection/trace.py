@@ -10,12 +10,37 @@ from backend.modules.inspection.yolo_context import (
 )
 
 def trace_stage(name: str, title: str, started: float, status: str = "ok", **details: Any) -> dict[str, Any]:
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    usage = details.get("usage") or {}
     return {
         "name": name,
         "title": title,
         "status": status,
-        "durationMs": int((time.perf_counter() - started) * 1000),
+        "durationMs": duration_ms,
+        "throughput": usage_throughput(usage, duration_ms),
         **details,
+    }
+
+
+def normalized_usage(usage: dict[str, Any] | None) -> dict[str, int]:
+    payload = usage or {}
+    input_tokens = int(payload.get("prompt_tokens") or payload.get("input_tokens") or 0)
+    output_tokens = int(payload.get("completion_tokens") or payload.get("output_tokens") or 0)
+    total_tokens = int(payload.get("total_tokens") or input_tokens + output_tokens)
+    return {
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "totalTokens": total_tokens,
+    }
+
+
+def usage_throughput(usage: dict[str, Any] | None, duration_ms: int) -> dict[str, float | int]:
+    normalized = normalized_usage(usage)
+    seconds = max(duration_ms / 1000, 0.001)
+    return {
+        **normalized,
+        "inputTokensPerSecond": round(normalized["inputTokens"] / seconds, 2),
+        "outputTokensPerSecond": round(normalized["outputTokens"] / seconds, 2),
     }
 
 
@@ -50,11 +75,23 @@ def build_trace_summary(raw_report: str, final_report: str, yolo_result: dict[st
         issues.append({"type": "judge_needs_manual_review", "title": "\u4e8c\u6b21\u590d\u6838\u7f6e\u4fe1\u4e0d\u8db3", "detail": "\u6700\u7ec8\u7ed3\u679c\u5efa\u8bae\u4eba\u5de5\u590d\u6838\uff0c\u8bf4\u660e\u56fe\u50cf\u8bc1\u636e\u6216\u6a21\u578b\u5224\u65ad\u4ecd\u4e0d\u7a33\u5b9a\u3002"})
     if yolo_result and not yolo_result.get("enabled") and not yolo_result.get("skipped"):
         issues.append({"type": "yolo_unavailable", "title": "YOLO \u672a\u542f\u7528\u6216\u4e0d\u53ef\u7528", "detail": str(yolo_result.get("reason") or "\u65e0\u8be6\u7ec6\u539f\u56e0")})
+    total_duration_ms = sum(int(stage.get("durationMs") or 0) for stage in stages)
+    total_usage = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}
+    for stage in stages:
+        normalized = normalized_usage(stage.get("usage") or {})
+        for key in total_usage:
+            total_usage[key] += normalized[key]
+    seconds = max(total_duration_ms / 1000, 0.001)
     return {
         "first": first,
         "final": final,
         "yoloLabels": yolo_labels,
         "issues": issues,
-        "totalDurationMs": sum(int(stage.get("durationMs") or 0) for stage in stages),
+        "totalDurationMs": total_duration_ms,
         "stageCount": len(stages),
+        "usage": {
+            **total_usage,
+            "inputTokensPerSecond": round(total_usage["inputTokens"] / seconds, 2),
+            "outputTokensPerSecond": round(total_usage["outputTokens"] / seconds, 2),
+        },
     }

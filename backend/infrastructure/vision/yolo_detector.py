@@ -14,6 +14,14 @@ YOLO_INFER_SCRIPT = Path(os.getenv("YOLO_INFER_SCRIPT", str(PROJECT_ROOT / "scri
 DEFAULT_MODEL_DIR = YOLO_OUTPUT_ROOT
 INTERNAL_WEIGHTS = Path(os.getenv("YOLO_INTERNAL_WEIGHTS", str(DEFAULT_MODEL_DIR / "fire_hydrant_v3.pt"))).resolve()
 APPEARANCE_WEIGHTS = Path(os.getenv("YOLO_APPEARANCE_WEIGHTS", str(DEFAULT_MODEL_DIR / "fire_hydrant_exter_v3.pt"))).resolve()
+OUTDOOR_HYDRANT_WEIGHTS = Path(os.getenv(
+    "YOLO_OUTDOOR_HYDRANT_WEIGHTS",
+    "/data/clj/output/yolo/20260723_yolo_outdoor_hydrant_v2/train/outdoor_hydrant_yolo11n/weights/best.pt",
+)).resolve()
+FIRE_EXTINGUISHER_WEIGHTS = Path(os.getenv(
+    "YOLO_FIRE_EXTINGUISHER_WEIGHTS",
+    "/data/clj/output/yolo/20260723_yolo_fire_extinguisher_v2/train/fire_extinguisher_yolo11n/weights/best.pt",
+)).resolve()
 CLASSES_FILE = Path(os.getenv("YOLO_CLASSES_FILE", str(DEFAULT_MODEL_DIR / "classes.json"))).resolve()
 DEFAULT_CONF = float(os.getenv("YOLO_CONF", "0.20"))
 DEFAULT_IMGSZ = int(os.getenv("YOLO_IMGSZ", "640"))
@@ -24,6 +32,8 @@ TMP_DIR = YOLO_TMP_DIR
 
 DEFAULT_COMPONENT_CLASSES = ["手轮", "接口", "控制器", "栓体", "水带", "水枪", "软管", "阀门"]
 DEFAULT_APPEARANCE_CLASSES = ["中文标识", "把手", "操作说明", "消火栓", "箱门", "英文标识", "装饰性箱门", "铭牌"]
+OUTDOOR_HYDRANT_CLASSES = ["室外消火栓"]
+FIRE_EXTINGUISHER_CLASSES = ["灭火器", "灭火器压力指示器"]
 
 
 def _load_internal_class_labels() -> dict[str, str]:
@@ -48,20 +58,59 @@ def _is_appearance_task(task: str) -> bool:
     return normalized in {"appearance", "box_appearance", "箱体外观", "外观"}
 
 
+def _normalize_model_task(task: str) -> str:
+    normalized = (task or "auto").strip().lower()
+    if normalized in {"outdoor", "outdoor_hydrant", "室外消火栓"}:
+        return "outdoor_hydrant"
+    if normalized in {"fire_extinguisher", "extinguisher", "灭火器"}:
+        return "fire_extinguisher"
+    if _is_appearance_task(normalized):
+        return "appearance"
+    return "internal_components"
+
+
 def _class_labels_for_task(task: str) -> dict[str, str]:
-    return APPEARANCE_CLASS_LABELS if _is_appearance_task(task) else INTERNAL_CLASS_LABELS
+    model_task = _normalize_model_task(task)
+    if model_task == "appearance":
+        return APPEARANCE_CLASS_LABELS
+    if model_task == "outdoor_hydrant":
+        return {str(index): name for index, name in enumerate(OUTDOOR_HYDRANT_CLASSES)}
+    if model_task == "fire_extinguisher":
+        return {str(index): name for index, name in enumerate(FIRE_EXTINGUISHER_CLASSES)}
+    return INTERNAL_CLASS_LABELS
 
 
 def _weights_for_task(task: str) -> Path:
-    return APPEARANCE_WEIGHTS if _is_appearance_task(task) else INTERNAL_WEIGHTS
+    model_task = _normalize_model_task(task)
+    if model_task == "appearance":
+        return APPEARANCE_WEIGHTS
+    if model_task == "outdoor_hydrant":
+        return OUTDOOR_HYDRANT_WEIGHTS
+    if model_task == "fire_extinguisher":
+        return FIRE_EXTINGUISHER_WEIGHTS
+    return INTERNAL_WEIGHTS
 
 
 def _scope_for_task(task: str) -> str:
-    return "箱体外观" if _is_appearance_task(task) else "内部组件"
+    model_task = _normalize_model_task(task)
+    if model_task == "appearance":
+        return "箱体外观"
+    if model_task == "outdoor_hydrant":
+        return "室外消火栓"
+    if model_task == "fire_extinguisher":
+        return "灭火器"
+    return "内部组件"
 
 
 def _type_for_task(task: str) -> str:
-    return "appearance_presence" if _is_appearance_task(task) else "component_presence"
+    model_task = _normalize_model_task(task)
+    if model_task == "appearance":
+        return "appearance_presence"
+    if model_task == "outdoor_hydrant":
+        return "outdoor_hydrant_presence"
+    if model_task == "fire_extinguisher":
+        return "fire_extinguisher_presence"
+    return "component_presence"
 
 
 def _enabled() -> bool:
@@ -70,12 +119,13 @@ def _enabled() -> bool:
 
 def _empty_result(enabled: bool = False, reason: str = "", task: str = "internal_components") -> dict[str, Any]:
     labels = _class_labels_for_task(task)
+    model_task = _normalize_model_task(task)
     return {
         "enabled": enabled,
         "modelScope": _scope_for_task(task),
         "modelType": _type_for_task(task),
         "weights": str(_weights_for_task(task)),
-        "classesFile": str(CLASSES_FILE) if not _is_appearance_task(task) else "model.names",
+        "classesFile": str(CLASSES_FILE) if model_task == "internal_components" else "model.names",
         "classes": list(labels.values()),
         "confThreshold": DEFAULT_CONF,
         "imgsz": DEFAULT_IMGSZ,
@@ -254,8 +304,7 @@ def compact_detections_for_prompt(detections: list[dict[str, Any]]) -> list[dict
     return compact
 
 def run_yolo_detection(image: str | None, task: str = "auto") -> dict[str, Any]:
-    normalized_task = (task or "auto").strip().lower()
-    model_task = "appearance" if _is_appearance_task(normalized_task) else "internal_components"
+    model_task = _normalize_model_task(task)
     weights = _weights_for_task(model_task)
     class_labels = _class_labels_for_task(model_task)
     if not _enabled():

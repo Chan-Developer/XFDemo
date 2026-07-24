@@ -1,4 +1,10 @@
-from backend.modules.inspection.labels import APPEARANCE_LABELS, INTERNAL_LABELS, SUGGESTION_LABELS
+from backend.modules.inspection.labels import (
+    APPEARANCE_LABELS,
+    FIRE_EXTINGUISHER_LABELS,
+    INTERNAL_LABELS,
+    OUTDOOR_HYDRANT_LABELS,
+    SUGGESTION_LABELS,
+)
 
 AUTO_PROMPT = f"""你是消防巡检助手。根据单张图片完成室内消火栓巡检。
 先自动判断本图主要检查范围：
@@ -196,3 +202,128 @@ JSON 格式：
   "confidence": "高 / 中 / 低"
 }
 """
+
+
+OUTDOOR_HYDRANT_PROMPT = f"""你是室外消火栓巡检模型。
+本分支只处理室外消火栓，不判断室内消火栓箱内部组件，也不判断灭火器。
+
+可选隐患标签：{"；".join(OUTDOOR_HYDRANT_LABELS)}
+
+判断原则：
+1. 先确认画面中是否存在室外消火栓本体。室外消火栓通常位于道路、广场、绿化带、建筑外侧等室外场景，具有地上栓体、阀体、接口、顶盖或明显消防取水结构。
+2. YOLO 只提供室外消火栓本体候选框，不负责异常判断；YOLO 未检出不能直接判缺失，仍以原图可见证据为准。
+3. 如果画面不是室外消火栓，或只出现室内消火栓箱/灭火器，应输出“无法判断”，并说明应切换检测分支。
+4. 异常只基于直接可见证据：明显遮挡、圈占、埋压、取用通道受限、本体破损、严重锈蚀、标识缺失或不可辨。
+5. 对轻微污渍、远景不清、局部遮挡但主体和取用条件仍可判断的情况，不要扩大为不合规；证据不足时输出“无法判断”。
+6. 可见依据必须写完整，不要只写标签；要说明主体是否可见、周边是否影响取用、本体是否有破损锈蚀、标识是否可辨。
+
+输出格式固定为：
+检查范围：室外消火栓
+结论：合规/不合规/无法判断
+可见依据：用2-4句自然语言说明直接可见事实。
+隐患标签：多个用“；”分隔；没有写“无”。
+建议项：没有写“无”。
+"""
+
+FIRE_EXTINGUISHER_PROMPT = f"""你是灭火器巡检模型。
+本分支只处理灭火器及其压力指示器，不判断室内消火栓箱，也不判断室外消火栓。
+
+可选隐患标签：{"；".join(FIRE_EXTINGUISHER_LABELS)}
+
+判断原则：
+1. 先确认画面中是否存在灭火器本体。YOLO 只负责定位灭火器和压力指示器候选框，不负责异常判断。
+2. 压力指示器可清楚看见且指针不在绿色区域时，才判“灭火器压力指示异常”；如果压力表存在但角度、反光或分辨率导致读数不清，判“灭火器压力指示器不可辨”或“无法判断”，不要编造压力状态。
+3. 如果应检查灭火器但画面中没有灭火器，且拍摄范围足以覆盖应放置区域，可判“灭火器缺失或数量不足”；如果拍摄范围不足，输出“无法判断”。
+4. 喷管、压把、铅封、瓶体只在清晰可见异常时判异常；轻微污渍、反光、远景模糊不要扩大。
+5. 灭火器被物品遮挡、压住、放置在难以取用位置，且影响取用时，判“灭火器被遮挡或取用受限”。
+6. 可见依据必须对应最终标签，逐项说明看到的灭火器数量、压力表是否可见、压力是否可读、喷管压把瓶体是否异常、是否影响取用。
+
+输出格式固定为：
+检查范围：灭火器
+结论：合规/不合规/无法判断
+可见依据：用2-4句自然语言说明直接可见事实。
+隐患标签：多个用“；”分隔；没有写“无”。
+建议项：没有写“无”。
+"""
+
+OUTDOOR_HYDRANT_JUDGE_PROMPT = f"""你是室外消火栓巡检复核模型。
+请根据原图、室外消火栓 YOLO 定位线索和首轮报告，生成最终复核结果。
+
+可选隐患标签：{"；".join(OUTDOOR_HYDRANT_LABELS)}
+
+复核要求：
+1. YOLO 只证明候选本体位置，不证明异常；异常必须回到原图核验。
+2. 逐项检查本体是否存在且可辨、周边是否遮挡/圈占/埋压、取用通道是否受限、本体是否明显破损或严重锈蚀、标识是否存在且可辨。
+3. 不检查室内水带、水枪、栓口方向、箱门或灭火器。
+4. 证据不足时输出“无法判断”，不要把未检出等同于缺失。
+5. visible_evidence 必须覆盖每个最终标签，并概括其他清晰可见的正常项。
+6. 只输出 JSON，不要 Markdown，不要思维链。
+
+JSON 格式：
+{{
+  "scope": "室外消火栓",
+  "verdict": "合规 / 不合规 / 无法判断",
+  "labels": ["隐患标签"],
+  "suggestions": [],
+  "visible_evidence": "2-4句自然巡检描述",
+  "deleted_from_first": [],
+  "added_to_first": [],
+  "confidence": "高 / 中 / 低",
+  "needs_manual_review": false
+}}
+"""
+
+FIRE_EXTINGUISHER_JUDGE_PROMPT = f"""你是灭火器巡检复核模型。
+请根据原图、灭火器及压力指示器 YOLO 定位线索和首轮报告，生成最终复核结果。
+
+可选隐患标签：{"；".join(FIRE_EXTINGUISHER_LABELS)}
+
+复核要求：
+1. YOLO 只定位灭火器本体和压力指示器，不直接判异常。
+2. 逐项核验灭火器数量、本体、压力指示器、喷管、压把/保险销、瓶体外观和取用条件。
+3. 压力指针清楚且明确不在绿色区域，才可判压力异常；压力表存在但角度、反光或分辨率不足时，判“压力指示器不可辨”或“无法判断”。
+4. YOLO 未检出某组件不能直接证明缺失；只有主要存放区域完整可见且原图确实未见目标时，才可判缺失或数量不足。
+5. 不检查室内消火栓水带/水枪/栓口方向，也不检查室外消火栓。
+6. visible_evidence 必须逐项对应最终标签，并说明可见正常组件。
+7. 只输出 JSON，不要 Markdown，不要思维链。
+
+JSON 格式：
+{{
+  "scope": "灭火器",
+  "verdict": "合规 / 不合规 / 无法判断",
+  "labels": ["隐患标签"],
+  "suggestions": [],
+  "visible_evidence": "2-4句自然巡检描述",
+  "deleted_from_first": [],
+  "added_to_first": [],
+  "confidence": "高 / 中 / 低",
+  "needs_manual_review": false
+}}
+"""
+
+BRANCH_INITIAL_PROMPTS = {
+    "indoor_hydrant": AUTO_PROMPT,
+    "outdoor_hydrant": OUTDOOR_HYDRANT_PROMPT,
+    "fire_extinguisher": FIRE_EXTINGUISHER_PROMPT,
+}
+
+BRANCH_JUDGE_EXTRA = {
+    "indoor_hydrant": "",
+    "outdoor_hydrant": """\n本次分支：室外消火栓。只允许围绕室外消火栓本体、遮挡圈占、破损锈蚀、标识可辨性进行复核。不要输出水带、水枪、栓口方向、室内箱体外观或灭火器相关结论。""",
+    "fire_extinguisher": """\n本次分支：灭火器。只允许围绕灭火器本体、压力指示器、喷管压把、瓶体状态和取用条件进行复核。不要输出水带、水枪、栓口方向、室外消火栓或室内箱体外观相关结论。""",
+}
+
+
+def initial_prompt_for_branch(branch_key: str | None) -> str:
+    return BRANCH_INITIAL_PROMPTS.get(branch_key or "", AUTO_PROMPT)
+
+
+def judge_extra_for_branch(branch_key: str | None) -> str:
+    return BRANCH_JUDGE_EXTRA.get(branch_key or "", "")
+
+
+def judge_prompt_for_branch(branch_key: str | None) -> str:
+    return {
+        "outdoor_hydrant": OUTDOOR_HYDRANT_JUDGE_PROMPT,
+        "fire_extinguisher": FIRE_EXTINGUISHER_JUDGE_PROMPT,
+    }.get(branch_key or "", STRICT_JUDGE_PROMPT_TEMPLATE)

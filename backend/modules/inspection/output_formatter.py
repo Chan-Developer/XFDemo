@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import re
 
-from backend.modules.inspection.labels import APPEARANCE_LABELS, INTERNAL_LABELS
+from backend.modules.inspection.labels import (
+    APPEARANCE_LABELS,
+    FIRE_EXTINGUISHER_LABELS,
+    INTERNAL_LABELS,
+    OUTDOOR_HYDRANT_LABELS,
+)
 from backend.modules.inspection.parser import labels_from_report, report_fields_for_trace, suggestions_from_report
 
 
@@ -30,6 +35,30 @@ INTERNAL_ISSUE_TEXT = {
     "室内消火栓箱锈蚀": "室内消火栓箱体存在锈蚀。",
     "室内消火栓箱门缺失": "室内消火栓箱门缺失。",
 }
+
+OUTDOOR_HYDRANT_ISSUE_TEXT = {
+    "\u5ba4\u5916\u6d88\u706b\u6813\u672c\u4f53\u7f3a\u5931\u6216\u65e0\u6cd5\u786e\u8ba4": "\u753b\u9762\u4e2d\u672a\u80fd\u786e\u8ba4\u5ba4\u5916\u6d88\u706b\u6813\u672c\u4f53\uff0c\u6216\u76ee\u6807\u88ab\u622a\u65ad\u3001\u906e\u6321\u5bfc\u81f4\u65e0\u6cd5\u6838\u9a8c\u3002",
+    "\u5ba4\u5916\u6d88\u706b\u6813\u88ab\u906e\u6321\u6216\u5708\u5360": "\u5ba4\u5916\u6d88\u706b\u6813\u5468\u8fb9\u5b58\u5728\u906e\u6321\u3001\u5360\u7528\u6216\u53d6\u7528\u901a\u9053\u53d7\u9650\u60c5\u51b5\u3002",
+    "\u5ba4\u5916\u6d88\u706b\u6813\u660e\u663e\u7834\u635f\u6216\u9508\u8680": "\u5ba4\u5916\u6d88\u706b\u6813\u672c\u4f53\u5b58\u5728\u660e\u663e\u7834\u635f\u3001\u9508\u8680\u3001\u53d8\u5f62\u6216\u90e8\u4ef6\u5f02\u5e38\u3002",
+    "\u5ba4\u5916\u6d88\u706b\u6813\u6807\u8bc6\u7f3a\u5931\u6216\u4e0d\u53ef\u8fa8": "\u5ba4\u5916\u6d88\u706b\u6813\u76f8\u5173\u6807\u8bc6\u7f3a\u5931\u3001\u6a21\u7cca\u6216\u4e0d\u53ef\u8fa8\uff0c\u5f71\u54cd\u73b0\u573a\u8bc6\u522b\u3002",
+}
+
+FIRE_EXTINGUISHER_ISSUE_TEXT = {
+    "\u706d\u706b\u5668\u7f3a\u5931\u6216\u6570\u91cf\u4e0d\u8db3": "\u753b\u9762\u4e2d\u706d\u706b\u5668\u6570\u91cf\u4e0d\u8db3\uff0c\u6216\u5e94\u914d\u7f6e\u4f4d\u7f6e\u672a\u89c1\u706d\u706b\u5668\u3002",
+    "\u706d\u706b\u5668\u538b\u529b\u6307\u793a\u5f02\u5e38": "\u706d\u706b\u5668\u538b\u529b\u6307\u793a\u5668\u8bfb\u6570\u4e0d\u5728\u6b63\u5e38\u8303\u56f4\uff0c\u5b58\u5728\u538b\u529b\u5f02\u5e38\u98ce\u9669\u3002",
+    "\u706d\u706b\u5668\u538b\u529b\u6307\u793a\u5668\u4e0d\u53ef\u8fa8": "\u706d\u706b\u5668\u538b\u529b\u6307\u793a\u5668\u88ab\u906e\u6321\u3001\u6a21\u7cca\u6216\u89d2\u5ea6\u4e0d\u6e05\uff0c\u65e0\u6cd5\u786e\u8ba4\u538b\u529b\u72b6\u6001\u3002",
+    "\u706d\u706b\u5668\u55b7\u7ba1\u6216\u538b\u628a\u7f3a\u5931\u635f\u574f": "\u706d\u706b\u5668\u55b7\u7ba1\u3001\u538b\u628a\u6216\u4fdd\u9669\u7ed3\u6784\u5b58\u5728\u7f3a\u5931\u3001\u635f\u574f\u6216\u4e0d\u53ef\u7528\u8ff9\u8c61\u3002",
+    "\u706d\u706b\u5668\u74f6\u4f53\u660e\u663e\u7834\u635f\u6216\u9508\u8680": "\u706d\u706b\u5668\u74f6\u4f53\u5b58\u5728\u660e\u663e\u7834\u635f\u3001\u9508\u8680\u3001\u53d8\u5f62\u6216\u6c61\u635f\u5f71\u54cd\u8bc6\u522b\u3002",
+    "\u706d\u706b\u5668\u88ab\u906e\u6321\u6216\u53d6\u7528\u53d7\u9650": "\u706d\u706b\u5668\u88ab\u906e\u6321\u3001\u5360\u7528\u6216\u6446\u653e\u4f4d\u7f6e\u5f71\u54cd\u5feb\u901f\u53d6\u7528\u3002",
+}
+
+BRANCH_ISSUE_TEXT = {
+    **APPEARANCE_ISSUE_TEXT,
+    **INTERNAL_ISSUE_TEXT,
+    **OUTDOOR_HYDRANT_ISSUE_TEXT,
+    **FIRE_EXTINGUISHER_ISSUE_TEXT,
+}
+
 
 
 LEGAL_BASIS_TEXT = (
@@ -79,6 +108,9 @@ def _split_labels(labels: list[str]) -> tuple[list[str], list[str]]:
     internal = [label for label in labels if label in INTERNAL_LABELS]
     return appearance, internal
 
+
+def _branch_labels(labels: list[str], allowed: list[str]) -> list[str]:
+    return [label for label in labels if label in allowed]
 
 def _join_sentences(items: list[str]) -> str:
     return "；".join(item.rstrip("。；;") for item in items if item).rstrip("；") + "。"
@@ -225,24 +257,32 @@ def _evidence_is_useful(evidence: str) -> bool:
 
 def _compliant_text(scope: str, evidence: str = "", yolo_result: dict | None = None) -> str:
     evidence_text = _compact_evidence(evidence)
-    component_text = _visible_component_text(yolo_result) if "内部" in scope else ""
+    component_text = _visible_component_text(yolo_result) if "\u5185\u90e8" in scope else ""
     if _evidence_is_useful(evidence_text):
         return component_text + evidence_text
-    if "外观" in scope:
+    if "\u5ba4\u5916\u6d88\u706b\u6813" in scope:
+        return "\u753b\u9762\u4e2d\u5ba4\u5916\u6d88\u706b\u6813\u4e3b\u4f53\u53ef\u786e\u8ba4\uff0c\u5468\u8fb9\u672a\u89c1\u660e\u663e\u906e\u6321\u3001\u5708\u5360\u3001\u7834\u635f\u3001\u9508\u8680\u6216\u6807\u8bc6\u4e0d\u53ef\u8fa8\u7b49\u5f02\u5e38\u3002"
+    if "\u706d\u706b\u5668" in scope:
+        return "\u753b\u9762\u4e2d\u706d\u706b\u5668\u53ca\u5173\u952e\u53ef\u89c1\u90e8\u4ef6\u72b6\u6001\u53ef\u786e\u8ba4\uff0c\u672a\u89c1\u7f3a\u5931\u3001\u53d6\u7528\u53d7\u9650\u3001\u74f6\u4f53\u660e\u663e\u7834\u635f\u6216\u538b\u529b\u6307\u793a\u5f02\u5e38\u3002"
+    if "\u5916\u89c2" in scope:
         return _compliant_appearance_text()
-    if "内部" in scope:
+    if "\u5185\u90e8" in scope:
         return component_text or _compliant_internal_text()
     return _compliant_appearance_text() + "\n\n" + _compliant_internal_text()
 
-
 def _scope_issue_prefix(scope: str, labels: list[str]) -> str:
     appearance_labels, internal_labels = _split_labels(labels)
-    if "外观" in scope or (appearance_labels and not internal_labels):
-        return "室内消火栓外观具体隐患表现在："
-    if "内部" in scope or (internal_labels and not appearance_labels):
-        return "室内消火栓内部各组件具体隐患表现在："
-    return "室内消火栓具体隐患表现在："
-
+    outdoor_labels = _branch_labels(labels, OUTDOOR_HYDRANT_LABELS)
+    extinguisher_labels = _branch_labels(labels, FIRE_EXTINGUISHER_LABELS)
+    if "\u5ba4\u5916\u6d88\u706b\u6813" in scope or outdoor_labels:
+        return "\u5ba4\u5916\u6d88\u706b\u6813\u5177\u4f53\u9690\u60a3\u8868\u73b0\u5728\uff1a"
+    if "\u706d\u706b\u5668" in scope or extinguisher_labels:
+        return "\u706d\u706b\u5668\u5177\u4f53\u9690\u60a3\u8868\u73b0\u5728\uff1a"
+    if "\u5916\u89c2" in scope or (appearance_labels and not internal_labels):
+        return "\u5ba4\u5185\u6d88\u706b\u6813\u5916\u89c2\u5177\u4f53\u9690\u60a3\u8868\u73b0\u5728\uff1a"
+    if "\u5185\u90e8" in scope or (internal_labels and not appearance_labels):
+        return "\u5ba4\u5185\u6d88\u706b\u6813\u5185\u90e8\u5404\u7ec4\u4ef6\u5177\u4f53\u9690\u60a3\u8868\u73b0\u5728\uff1a"
+    return "\u5ba4\u5185\u6d88\u706b\u6813\u5177\u4f53\u9690\u60a3\u8868\u73b0\u5728\uff1a"
 
 def _fallback_issue_text(labels: list[str], scope: str) -> str:
     appearance_labels, internal_labels = _split_labels(labels)
@@ -251,10 +291,11 @@ def _fallback_issue_text(labels: list[str], scope: str) -> str:
         parts.extend(APPEARANCE_ISSUE_TEXT[label] for label in appearance_labels if label in APPEARANCE_ISSUE_TEXT)
     if internal_labels:
         parts.extend(INTERNAL_ISSUE_TEXT[label] for label in internal_labels if label in INTERNAL_ISSUE_TEXT)
+    parts.extend(OUTDOOR_HYDRANT_ISSUE_TEXT[label] for label in labels if label in OUTDOOR_HYDRANT_ISSUE_TEXT)
+    parts.extend(FIRE_EXTINGUISHER_ISSUE_TEXT[label] for label in labels if label in FIRE_EXTINGUISHER_ISSUE_TEXT)
     if parts:
         return _scope_issue_prefix(scope, labels) + _join_sentences(parts)
-    return _scope_issue_prefix(scope, labels) + "当前图片中存在不符合合规要求的可见情况。"
-
+    return _scope_issue_prefix(scope, labels) + "\u5f53\u524d\u56fe\u7247\u4e2d\u5b58\u5728\u4e0d\u7b26\u5408\u5408\u89c4\u8981\u6c42\u7684\u53ef\u89c1\u60c5\u51b5\u3002"
 
 def _unsupported_evidence_labels(labels: list[str], evidence: str) -> list[str]:
     text = _clean_evidence(evidence)
@@ -276,7 +317,7 @@ def _noncompliant_text(labels: list[str], evidence: str, scope: str) -> str:
             return _scope_issue_prefix(scope, labels) + evidence_text
         supported = [label for label in labels if label not in unsupported]
         fallback_parts = [
-            APPEARANCE_ISSUE_TEXT.get(label) or INTERNAL_ISSUE_TEXT.get(label)
+            BRANCH_ISSUE_TEXT.get(label)
             for label in unsupported
         ]
         fallback_parts = [item for item in fallback_parts if item]
@@ -289,6 +330,8 @@ def _noncompliant_text(labels: list[str], evidence: str, scope: str) -> str:
 
 def _suggestions_text(labels: list[str], suggestions: list[str], verdict: str) -> str:
     items = [REMEDIATION_TEXT[label] for label in labels if label in REMEDIATION_TEXT]
+    items.extend("\u590d\u6838\u5ba4\u5916\u6d88\u706b\u6813\u672c\u4f53\u3001\u5468\u8fb9\u901a\u9053\u548c\u6807\u8bc6\u72b6\u6001\uff0c\u6e05\u7406\u906e\u6321\u7269\u5e76\u4fee\u590d\u7834\u635f\u6216\u9508\u8680\u90e8\u4f4d\u3002" for label in labels if label in OUTDOOR_HYDRANT_LABELS)
+    items.extend("\u590d\u6838\u706d\u706b\u5668\u6570\u91cf\u3001\u6446\u653e\u4f4d\u7f6e\u3001\u538b\u529b\u6307\u793a\u5668\u548c\u74f6\u4f53\u5916\u89c2\uff0c\u6309\u73b0\u573a\u914d\u7f6e\u8981\u6c42\u8865\u914d\u6216\u66f4\u6362\u5f02\u5e38\u5668\u6750\u3002" for label in labels if label in FIRE_EXTINGUISHER_LABELS)
     items.extend(SUGGESTION_TEXT[item] for item in suggestions if item in SUGGESTION_TEXT)
     items = list(dict.fromkeys(items))
     if items:
@@ -298,11 +341,15 @@ def _suggestions_text(labels: list[str], suggestions: list[str], verdict: str) -
     return "建议保持设施现状并纳入日常巡检，定期检查组件在位、启闭和外观状态。"
 
 
-def _unknown_text(evidence: str) -> str:
+def _unknown_text(evidence: str, scope: str = "") -> str:
     evidence_text = _compact_evidence(evidence)
     if _evidence_is_useful(evidence_text):
         return evidence_text
-    return "当前图片未形成可核验的室内消火栓目标或合规/隐患证据，建议重新上传包含消火栓箱体或内部组件的清晰图片。"
+    if "\u5ba4\u5916\u6d88\u706b\u6813" in scope:
+        return "\u5f53\u524d\u56fe\u7247\u672a\u5f62\u6210\u53ef\u6838\u9a8c\u7684\u5ba4\u5916\u6d88\u706b\u6813\u76ee\u6807\u6216\u9690\u60a3\u8bc1\u636e\uff0c\u5efa\u8bae\u91cd\u65b0\u4e0a\u4f20\u5305\u542b\u5ba4\u5916\u6d88\u706b\u6813\u672c\u4f53\u3001\u5468\u8fb9\u73af\u5883\u548c\u6807\u8bc6\u7684\u6e05\u6670\u56fe\u7247\u3002"
+    if "\u706d\u706b\u5668" in scope:
+        return "\u5f53\u524d\u56fe\u7247\u672a\u5f62\u6210\u53ef\u6838\u9a8c\u7684\u706d\u706b\u5668\u76ee\u6807\u6216\u9690\u60a3\u8bc1\u636e\uff0c\u5efa\u8bae\u91cd\u65b0\u4e0a\u4f20\u5305\u542b\u706d\u706b\u5668\u74f6\u4f53\u3001\u538b\u529b\u6307\u793a\u5668\u548c\u6446\u653e\u73af\u5883\u7684\u6e05\u6670\u56fe\u7247\u3002"
+    return "\u5f53\u524d\u56fe\u7247\u672a\u5f62\u6210\u53ef\u6838\u9a8c\u7684\u5ba4\u5185\u6d88\u706b\u6813\u76ee\u6807\u6216\u5408\u89c4/\u9690\u60a3\u8bc1\u636e\uff0c\u5efa\u8bae\u91cd\u65b0\u4e0a\u4f20\u5305\u542b\u6d88\u706b\u6813\u7bb1\u4f53\u6216\u5185\u90e8\u7ec4\u4ef6\u7684\u6e05\u6670\u56fe\u7247\u3002"
 
 def format_public_report(structured_report: str, yolo_result: dict | None = None) -> str:
     fields = report_fields_for_trace(structured_report)
@@ -321,7 +368,7 @@ def format_public_report(structured_report: str, yolo_result: dict | None = None
     conclusion = "无法判断" if is_unknown else ("合格" if is_qualified else "不合格")
     body_evidence = _remove_suggestion_observations(evidence) if is_qualified and suggestions else evidence
     if is_unknown:
-        body = _unknown_text(evidence)
+        body = _unknown_text(evidence, scope)
     else:
         body = _compliant_text(scope, body_evidence, yolo_result) if is_qualified else _noncompliant_text(labels, evidence, scope)
 

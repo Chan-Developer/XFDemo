@@ -58,7 +58,7 @@ export const inspectFire = ({ query, image }) => {
  * @param {AbortSignal} [params.signal] - 中断信号
  * @returns {Promise<{response: string, usage: Object}>}
  */
-export const inspectFireStream = async ({ query, image, onChunk, onDone, signal }) => {
+export const inspectFireStream = async ({ query, image, onChunk, onProgress, onDone, signal }) => {
   const response = await fetch('/api/chat/stream', {
     method: 'POST',
     headers: {
@@ -100,6 +100,11 @@ export const inspectFireStream = async ({ query, image, onChunk, onDone, signal 
       const delta = payload.delta || ''
       finalPayload.response += delta
       onChunk?.(delta)
+      return
+    }
+
+    if (payload.type === 'progress') {
+      onProgress?.(payload)
       return
     }
 

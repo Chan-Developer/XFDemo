@@ -1,3 +1,6 @@
+import queue
+import threading
+
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from backend.modules.inspection.pipeline import get_agent
@@ -36,8 +39,39 @@ def chat_stream():
 
     @stream_with_context
     def generate():
+        events: queue.Queue = queue.Queue()
+        completed = object()
+
+        def on_progress(payload):
+            events.put({"type": "progress", **payload})
+
+        def run_inspection():
+            try:
+                events.put({"type": "state", "status": "started"})
+                state = agent.stream_checked(data, progress_callback=on_progress)
+                events.put({"type": "result", "state": state})
+            except Exception as exc:
+                events.put({"type": "worker_error", "error": str(exc)})
+            finally:
+                events.put(completed)
+
+        worker = threading.Thread(target=run_inspection, daemon=True)
+        worker.start()
         try:
-            state = agent.stream_checked(data)
+            state = None
+            while True:
+                event = events.get()
+                if event is completed:
+                    break
+                if event.get("type") == "result":
+                    state = event["state"]
+                    continue
+                if event.get("type") == "worker_error":
+                    raise RuntimeError(event.get("error") or "检测任务执行失败")
+                yield ndjson(event)
+
+            if state is None:
+                raise RuntimeError("检测任务未返回结果")
             final_text = trim_output(strip_reasoning(state.get("report", "")), max_chars=max(agent.settings.max_output_chars, 4000))
             if final_text:
                 yield ndjson({"type": "delta", "delta": final_text})

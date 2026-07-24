@@ -433,6 +433,14 @@ def clear_reviews():
 def inspection_monitor_stats(limit):
     records = read_history_records()[:limit]
     traced = [record for record in records if record.get("trace")]
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_duration_ms = 0
+    for record in records:
+        usage = record.get("usage") or {}
+        total_input_tokens += int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+        total_output_tokens += int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+        total_duration_ms += int(((record.get("trace") or {}).get("summary") or {}).get("totalDurationMs") or 0)
     stage_totals = {}
     for record in traced:
         for stage in (record.get("trace") or {}).get("stages") or []:
@@ -464,6 +472,14 @@ def inspection_monitor_stats(limit):
     return {
         "total": len(records),
         "withTrace": len(traced),
+        "usage": {
+            "inputTokens": total_input_tokens,
+            "outputTokens": total_output_tokens,
+            "totalTokens": total_input_tokens + total_output_tokens,
+            "inputTokensPerSecond": round(total_input_tokens / max(total_duration_ms / 1000, 0.001), 2),
+            "outputTokensPerSecond": round(total_output_tokens / max(total_duration_ms / 1000, 0.001), 2),
+            "avgDurationMs": round(total_duration_ms / max(len(traced), 1)),
+        },
         "qwenCorrected": sum(1 for record in traced if trace_has_issue(record, "qwen_corrected")),
         "yoloPossibleMiss": sum(1 for record in traced if trace_has_issue(record, "yolo_possible_miss")),
         "yoloPossibleFalsePositive": sum(1 for record in traced if trace_has_issue(record, "yolo_possible_false_positive")),
