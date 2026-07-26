@@ -1,8 +1,14 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { ChevronDown, ClipboardCheck, FileText, History, Workflow } from 'lucide-vue-next'
-import { clearInspectionHistory, deleteInspectionHistory, fetchInspectionHistory } from '@/api'
+import { ChevronDown, ClipboardCheck, FileText, History, Pencil, Workflow } from 'lucide-vue-next'
+import {
+  clearInspectionHistory,
+  createInspectionRevision,
+  deleteInspectionHistory,
+  fetchInspectionHistory
+} from '@/api'
 import ReportViewer from '@/components/report/ReportViewer.vue'
+import ReportRevisionDialog from '@/components/report/ReportRevisionDialog.vue'
 import RevisionTimeline from '@/components/report/RevisionTimeline.vue'
 
 const ui = {
@@ -53,6 +59,10 @@ const selectedImage = ref(null)
 const deletingId = ref('')
 const clearingAll = ref(false)
 const failedImages = ref(new Set())
+const revisionRecord = ref(null)
+const revisionSaving = ref(false)
+const revisionError = ref('')
+const revisionMessage = ref('')
 
 const visiblePages = computed(() => {
   const pages = payload.value.pages || 1
@@ -207,6 +217,50 @@ const latestReportRevision = (record) => record?.reportRevisionSummary?.latest |
 const reportRevisionsOf = (record) => record?.reportRevisions || []
 const reviewNoteOf = (record) => record?.reviewNote || ''
 
+const openRevisionDialog = (record) => {
+  if (!record?.id || !record?.effectiveReportDocument) return
+  revisionRecord.value = record
+  revisionError.value = ''
+  revisionMessage.value = ''
+}
+
+const closeRevisionDialog = () => {
+  if (revisionSaving.value) return
+  revisionRecord.value = null
+  revisionError.value = ''
+}
+
+const saveReportRevision = async (revisionPayload) => {
+  if (!revisionRecord.value?.id) return
+  revisionSaving.value = true
+  revisionError.value = ''
+  try {
+    const recordId = revisionRecord.value.id
+    const saved = await createInspectionRevision(recordId, revisionPayload)
+    const index = payload.value.records.findIndex((record) => record.id === recordId)
+    if (index >= 0) {
+      const current = payload.value.records[index]
+      const verdictLabels = {
+        qualified: ui.compliant,
+        unqualified: ui.nonCompliant,
+        unknown: ui.unknown
+      }
+      payload.value.records[index] = {
+        ...current,
+        ...saved,
+        verdict: verdictLabels[saved.effectiveReportDocument?.verdict] || ui.unknown,
+        labels: saved.reportRevisionSummary?.hasCorrection ? [] : current.labels
+      }
+    }
+    revisionMessage.value = `记录 ${recordId} 的人工修订已保存`
+    revisionRecord.value = null
+  } catch (err) {
+    revisionError.value = err.message || '保存人工修订失败'
+  } finally {
+    revisionSaving.value = false
+  }
+}
+
 const deleteRecord = async (record) => {
   if (!record?.id || !window.confirm(ui.deleteConfirm)) return
   deletingId.value = record.id
@@ -290,6 +344,7 @@ onMounted(loadHistory)
         <div class="history-status">
           <span v-if="loading">{{ ui.loading }}</span>
           <span v-else-if="error">{{ error }}</span>
+          <span v-else-if="revisionMessage" class="history-status__success">{{ revisionMessage }}</span>
           <span v-else>{{ ui.total }} {{ payload.total }} {{ ui.rows }} / {{ payload.page }} / {{ payload.pages || 1 }} {{ ui.page }}</span>
         </div>
 
@@ -319,6 +374,10 @@ onMounted(loadHistory)
                   <span :class="['history-badge', record.verdict === ui.compliant ? 'history-badge--ok' : 'history-badge--bad']">
                     {{ record.verdict || ui.unknown }}
                   </span>
+                  <button class="history-edit" type="button" title="修订检测报告" @click="openRevisionDialog(record)">
+                    <Pencil :size="14" :stroke-width="2" />
+                    修订
+                  </button>
                   <button class="history-delete" type="button" :disabled="deletingId === record.id" @click="deleteRecord(record)">
                     {{ deletingId === record.id ? ui.deleting : ui.delete }}
                   </button>
@@ -482,6 +541,15 @@ onMounted(loadHistory)
         </div>
       </div>
     </div>
+
+    <ReportRevisionDialog
+      v-if="revisionRecord"
+      :record="revisionRecord"
+      :saving="revisionSaving"
+      :error="revisionError"
+      @save="saveReportRevision"
+      @cancel="closeRevisionDialog"
+    />
   </div>
 </template>
 
@@ -579,6 +647,11 @@ onMounted(loadHistory)
   font-size: var(--font-size-sm);
 }
 
+.history-status__success {
+  color: var(--color-success);
+  font-weight: 650;
+}
+
 .history-empty {
   padding: var(--spacing-2xl);
   text-align: center;
@@ -673,15 +746,34 @@ onMounted(loadHistory)
   background: var(--color-primary);
 }
 
+.history-edit,
 .history-delete {
+  display: inline-flex;
   min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   padding: 0 var(--spacing-sm);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-gray-200);
   background: var(--bg-secondary);
-  color: var(--color-primary);
   font-size: var(--font-size-xs);
   white-space: nowrap;
+}
+
+.history-edit {
+  color: var(--text-secondary);
+}
+
+.history-edit:hover {
+  border-color: rgba(239, 59, 57, 0.28);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-dark);
+}
+
+.history-delete {
+  min-height: 28px;
+  color: var(--color-primary);
 }
 
 .history-delete:disabled {
