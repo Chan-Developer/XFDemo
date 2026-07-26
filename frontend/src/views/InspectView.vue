@@ -1,8 +1,11 @@
 <script setup>
 import { ref, computed, onBeforeUnmount } from 'vue'
-import { inspectFireStream } from '@/api'
+import { Pencil } from 'lucide-vue-next'
+import { createInspectionRevision, inspectFireStream } from '@/api'
 import ImageUploader from '@/components/ImageUploader.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
+import ReportEditor from '@/components/report/ReportEditor.vue'
+import ReportViewer from '@/components/report/ReportViewer.vue'
 
 // 固定的检测提示语
 const FIXED_QUERY = '请帮我判断这张图片里面的消防栓存在的异常'
@@ -15,6 +18,11 @@ const yoloResult = ref(null)
 const traceResult = ref(null)
 const progressEvents = ref([])
 const abortController = ref(null)
+const historyRecord = ref(null)
+const editingReport = ref(false)
+const revisionSaving = ref(false)
+const revisionError = ref('')
+const revisionMessage = ref('')
 const STREAM_RENDER_INTERVAL = 120
 let streamedResult = ''
 let streamRenderTimer = null
@@ -121,6 +129,10 @@ const handleImageUpload = (base64) => {
   yoloResult.value = null
   traceResult.value = null
   progressEvents.value = []
+  historyRecord.value = null
+  editingReport.value = false
+  revisionError.value = ''
+  revisionMessage.value = ''
 }
 
 const handleImageRemove = () => {
@@ -131,6 +143,10 @@ const handleImageRemove = () => {
   yoloResult.value = null
   traceResult.value = null
   progressEvents.value = []
+  historyRecord.value = null
+  editingReport.value = false
+  revisionError.value = ''
+  revisionMessage.value = ''
 }
 
 const abortActiveRequest = () => {
@@ -150,6 +166,10 @@ const handleSubmit = async () => {
   yoloResult.value = null
   traceResult.value = null
   progressEvents.value = []
+  historyRecord.value = null
+  editingReport.value = false
+  revisionError.value = ''
+  revisionMessage.value = ''
   streamedResult = ''
   const controller = new AbortController()
   abortController.value = controller
@@ -172,6 +192,10 @@ const handleSubmit = async () => {
     result.value = res.response
     yoloResult.value = res.yolo || null
     traceResult.value = res.trace || null
+    historyRecord.value = res.history || null
+    if (historyRecord.value?.effectiveResponse) {
+      result.value = historyRecord.value.effectiveResponse
+    }
   } catch (err) {
     if (err.name === 'AbortError') {
       return
@@ -195,57 +219,58 @@ const handleReset = () => {
   yoloResult.value = null
   traceResult.value = null
   progressEvents.value = []
+  historyRecord.value = null
+  editingReport.value = false
+  revisionError.value = ''
+  revisionMessage.value = ''
 }
 
-const escapeHtml = (value) => String(value || '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;')
+const currentReportDocument = computed(() => (
+  historyRecord.value?.effectiveReportDocument || null
+))
+const modelReportDocument = computed(() => (
+  historyRecord.value?.modelReportDocument || currentReportDocument.value
+))
+const latestRevisionId = computed(() => (
+  historyRecord.value?.reportRevisionSummary?.latest?.id || ''
+))
+const hasReportCorrection = computed(() => (
+  Boolean(historyRecord.value?.reportRevisionSummary?.hasCorrection)
+))
 
-const sectionMeta = {
-  '一': { label: '01', tone: 'primary' },
-  '二': { label: '02', tone: 'neutral' },
-  '三': { label: '03', tone: 'neutral' }
+const openReportEditor = () => {
+  if (!historyRecord.value?.id || !currentReportDocument.value) return
+  revisionError.value = ''
+  revisionMessage.value = ''
+  editingReport.value = true
 }
 
-const renderReportHtml = (text) => {
-  const lines = String(text || '').split(/\r?\n/).map((line) => line.trim())
-  const html = []
+const closeReportEditor = () => {
+  if (revisionSaving.value) return
+  revisionError.value = ''
+  editingReport.value = false
+}
 
-  lines.forEach((line) => {
-    if (!line) return
-    const sectionMatch = line.match(/^([一二三])、(.+)$/)
-    if (sectionMatch) {
-      const [, numeral, title] = sectionMatch
-      const meta = sectionMeta[numeral] || { label: numeral, tone: 'neutral' }
-      const verdictMatch = title.match(/^检测结论：?(.+)?$/)
-      const verdict = verdictMatch ? (verdictMatch[1] || '').trim() : ''
-      const displayTitle = verdictMatch ? '检测结论' : title.replace(/：$/, '')
-      const badgeClass = verdict.includes('不合格')
-        ? 'report-section__badge--bad'
-        : (verdict.includes('无法判断') ? 'report-section__badge--unknown' : 'report-section__badge--ok')
-      html.push(`
-        <div class="report-section report-section--${meta.tone}">
-          <span class="report-section__index">${meta.label}</span>
-          <div class="report-section__title">${escapeHtml(displayTitle)}</div>
-          ${verdict ? `<span class="report-section__badge ${badgeClass}">${escapeHtml(verdict)}</span>` : ''}
-        </div>
-      `)
-      return
+const saveReportRevision = async (payload) => {
+  if (!historyRecord.value?.id) return
+  revisionSaving.value = true
+  revisionError.value = ''
+  revisionMessage.value = ''
+  try {
+    const saved = await createInspectionRevision(historyRecord.value.id, payload)
+    historyRecord.value = {
+      ...historyRecord.value,
+      ...saved
     }
-
-    html.push(`<p class="report-paragraph">${escapeHtml(line)}</p>`)
-  })
-
-  return html.join('')
+    result.value = saved.effectiveResponse || result.value
+    editingReport.value = false
+    revisionMessage.value = `人工修订 v${saved.revision?.version || ''} 已保存`
+  } catch (err) {
+    revisionError.value = err.message || '保存人工修订失败'
+  } finally {
+    revisionSaving.value = false
+  }
 }
-
-const renderedResult = computed(() => {
-  if (!result.value) return ''
-  return renderReportHtml(result.value)
-})
 
 onBeforeUnmount(() => {
   abortActiveRequest()
@@ -324,14 +349,25 @@ onBeforeUnmount(() => {
         <!-- Result Section -->
         <div class="inspect__result-section">
           <div class="inspect__card card inspect__result-card">
-            <h2 class="inspect__card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      stroke="currentColor" stroke-width="1.5"
-                      stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              检测报告
-            </h2>
+            <div class="inspect__report-heading">
+              <h2 class="inspect__card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        stroke="currentColor" stroke-width="1.5"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                检测报告
+              </h2>
+              <button
+                v-if="result && historyRecord?.id && !isLoading && !editingReport"
+                class="inspect__edit-report"
+                type="button"
+                @click="openReportEditor"
+              >
+                <Pencil :size="17" />
+                人工修订
+              </button>
+            </div>
 
             <!-- Error State -->
             <div v-if="error" class="inspect__error">
@@ -349,7 +385,24 @@ onBeforeUnmount(() => {
                 <LoadingSpinner size="sm" />
                 <span>AI 正在流式生成检测报告...</span>
               </div>
-              <div v-if="result" class="inspect__result-content markdown-body" v-html="renderedResult"></div>
+              <p v-if="revisionMessage && !editingReport" class="inspect__revision-message">{{ revisionMessage }}</p>
+              <ReportEditor
+                v-if="editingReport && currentReportDocument && modelReportDocument"
+                :model-value="currentReportDocument"
+                :model-document="modelReportDocument"
+                :base-revision-id="latestRevisionId"
+                :saving="revisionSaving"
+                :error="revisionError"
+                @save="saveReportRevision"
+                @cancel="closeReportEditor"
+              />
+              <ReportViewer
+                v-else-if="result"
+                class="inspect__result-content"
+                :document="currentReportDocument"
+                :text="result"
+                :revised="hasReportCorrection"
+              />
               <div v-if="false && yoloResult" class="inspect__yolo-card">
                 <div class="inspect__yolo-head">
                   <strong>YOLO 辅助检测</strong>
@@ -785,100 +838,51 @@ onBeforeUnmount(() => {
   top: 0;
 }
 
-.inspect__result-content.markdown-body {
-  display: grid;
+.inspect__report-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--spacing-md);
-  color: var(--text-primary);
 }
 
-.inspect__result-content :deep(.report-section) {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  margin-top: var(--spacing-md);
-  padding: 14px 18px;
-  border: 1px solid var(--color-gray-200);
-  border-left: 3px solid var(--color-primary);
-  border-radius: var(--radius-lg);
-  background: #fffafa;
-  box-shadow: none;
+.inspect__report-heading .inspect__card-title {
+  margin-bottom: 0;
 }
 
-.inspect__result-content :deep(.report-section:first-child) {
-  margin-top: 0;
-}
-
-.inspect__result-content :deep(.report-section--neutral) {
-  border-left-color: var(--color-gray-300);
-  background: #f8faf9;
-}
-
-.inspect__result-content :deep(.report-section__index) {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: var(--text-inverse);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.inspect__result-content :deep(.report-section--neutral .report-section__index) {
-  background: var(--color-gray-700);
-}
-
-.inspect__result-content :deep(.report-section__title) {
-  min-width: 0;
-  color: var(--text-primary);
-  font-size: 1.05rem;
-  font-weight: 760;
-  line-height: 1.28;
-  letter-spacing: 0;
-}
-
-.inspect__result-content :deep(.report-section__badge) {
+.inspect__edit-report {
   display: inline-flex;
+  min-height: 38px;
   align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
 
-.inspect__result-content :deep(.report-section__badge--ok) {
-  color: #247357;
-  background: #e3f3ec;
-}
-
-.inspect__result-content :deep(.report-section__badge--bad) {
-  color: var(--color-primary-dark);
+.inspect__edit-report:hover {
+  border-color: var(--color-primary);
   background: var(--color-primary-subtle);
+  color: var(--color-primary-dark);
 }
 
-.inspect__result-content :deep(.report-paragraph) {
-  margin: 0;
-  padding: 0 var(--spacing-xs) var(--spacing-sm) 40px;
-  color: var(--text-primary);
-  font-size: .94rem;
-  line-height: 1.82;
-  text-align: left;
-  overflow-wrap: anywhere;
+.inspect__result-content {
+  margin-top: var(--spacing-lg);
 }
 
-.inspect__result-content :deep(.report-paragraph + .report-paragraph) {
-  margin-top: calc(var(--spacing-sm) * -1);
-}
-
-.inspect__result-content :deep(strong) {
-  font-weight: 700;
-  color: var(--color-primary);
+.inspect__revision-message {
+  margin: var(--spacing-lg) 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid #d79b2e;
+  background: #fff8eb;
+  color: #815b18;
+  font-size: 14px;
 }
 
 
@@ -955,6 +959,17 @@ onBeforeUnmount(() => {
 @media (max-width: 1024px) {
   .inspect__result-section {
     position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .inspect__report-heading {
+    align-items: flex-start;
+  }
+
+  .inspect__edit-report {
+    flex: 0 0 auto;
+    padding: 0 10px;
   }
 }
 </style>

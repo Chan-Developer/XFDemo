@@ -1,7 +1,21 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from backend.modules.dataset.service import as_int
-from backend.modules.history.inspection_history import clear_history, create_review, delete_history_record, delete_review, list_history, list_reviews, send_history_image
+from backend.modules.history.inspection_history import (
+    clear_history,
+    create_review,
+    delete_history_record,
+    delete_review,
+    get_history_record,
+    list_history,
+    list_reviews,
+    send_history_image,
+)
+from backend.modules.history.report_revision import (
+    RevisionConflictError,
+    create_report_revision,
+    report_revision_state,
+)
 
 history_bp = Blueprint("history", __name__)
 
@@ -31,6 +45,36 @@ def delete_inspection_history(record_id):
 @history_bp.get("/history/inspections/<record_id>/reviews")
 def inspection_reviews(record_id):
     return jsonify(list_reviews(record_id))
+
+
+@history_bp.get("/history/inspections/<record_id>/revisions")
+def inspection_report_revisions(record_id):
+    try:
+        record = get_history_record(record_id)
+        return jsonify(report_revision_state(record))
+    except KeyError:
+        return jsonify({"error": "history record not found"}), 404
+
+
+@history_bp.post("/history/inspections/<record_id>/revisions")
+def create_inspection_report_revision(record_id):
+    try:
+        record = get_history_record(record_id)
+        revision = create_report_revision(
+            record,
+            request.get_json(silent=True) or {},
+            g.current_user,
+        )
+        return jsonify({
+            "revision": revision,
+            **report_revision_state(record),
+        }), 201
+    except RevisionConflictError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except KeyError:
+        return jsonify({"error": "history record not found"}), 404
 
 
 @history_bp.post("/history/inspections/<record_id>/reviews")

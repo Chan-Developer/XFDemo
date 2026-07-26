@@ -20,6 +20,13 @@ else:
 
 from backend.common.images import decode_data_url, image_extension, send_image, versioned_image_url
 from backend.config.paths import INSPECTION_HISTORY_DIR, INSPECTION_HISTORY_FILE, INSPECTION_HISTORY_IMAGE_DIR
+from backend.modules.history.report_document import VERDICT_LABELS, parse_report_document
+from backend.modules.history.report_revision import (
+    clear_report_revisions,
+    delete_report_revisions_for_record,
+    report_revisions_by_record,
+    report_revision_state,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -172,6 +179,7 @@ def append_history(data, response, usage=None, finish_reason="", task="", yolo=N
         "yoloImageName": yolo_image_info.get("yoloImageName", ""),
         "response": response or "",
         "responseExcerpt": (response or "")[:500],
+        "modelReportDocument": parse_report_document(response or ""),
         "usage": usage or {},
         "finishReason": finish_reason,
         "task": task,
@@ -181,7 +189,7 @@ def append_history(data, response, usage=None, finish_reason="", task="", yolo=N
     }
     with INSPECTION_HISTORY_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-    return record
+    return {**record, **report_revision_state(record)}
 
 
 def read_history_records(reverse=True):
@@ -199,6 +207,13 @@ def read_history_records(reverse=True):
     if reverse:
         records.reverse()
     return records
+
+
+def get_history_record(record_id):
+    for record in read_history_records(reverse=False):
+        if record.get("id") == record_id:
+            return record
+    raise KeyError(record_id)
 
 
 def write_history_records(records):
@@ -242,8 +257,20 @@ def trace_has_issue(record, issue_type):
 def list_history(page, page_size, verdict_filter="", query=""):
     records = []
     grouped_reviews = reviews_by_record()
+    grouped_revisions = report_revisions_by_record()
     for original_record in read_history_records():
         record = dict(original_record)
+        revision_state = report_revision_state(
+            record,
+            grouped_revisions.get(str(record.get("id") or ""), []),
+        )
+        record.update(revision_state)
+        effective_document = revision_state["effectiveReportDocument"]
+        record["modelVerdict"] = record.get("verdict") or ""
+        record["verdict"] = VERDICT_LABELS[effective_document["verdict"]]
+        record["responseExcerpt"] = revision_state["effectiveResponse"][:500]
+        if revision_state["reportRevisionSummary"]["hasCorrection"]:
+            record["labels"] = []
         image_name = record.get("imageName") or ""
         if image_name:
             record["imageUrl"] = versioned_image_url("/api/history/image/", INSPECTION_HISTORY_IMAGE_DIR / image_name)
@@ -270,6 +297,8 @@ def list_history(page, page_size, verdict_filter="", query=""):
         record_reviews = grouped_reviews.get(record.get("id") or "", [])
         record["reviews"] = record_reviews
         record["reviewSummary"] = summarize_reviews(record_reviews)
+        if not record.get("reviewNote") and record_reviews:
+            record["reviewNote"] = str(record_reviews[0].get("comment") or "")
         records.append(record)
     total = len(records)
     start = (page - 1) * page_size
@@ -283,6 +312,7 @@ def clear_history():
     if INSPECTION_HISTORY_FILE.exists():
         INSPECTION_HISTORY_FILE.unlink()
     clear_reviews()
+    clear_report_revisions()
     return {"deleted": True, "count": len(records)}
 
 
@@ -300,6 +330,7 @@ def delete_history_record(record_id):
     write_history_records(kept)
     delete_history_images(deleted)
     delete_reviews_for_record(record_id)
+    delete_report_revisions_for_record(record_id)
     return {"deleted": True, "id": record_id}
 
 

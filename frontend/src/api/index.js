@@ -89,7 +89,7 @@ export const inspectFireStream = async ({ query, image, onChunk, onProgress, onD
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
-  let finalPayload = { response: '', usage: {}, yolo: null, trace: null }
+  let finalPayload = { response: '', usage: {}, yolo: null, trace: null, history: null }
 
   const handleLine = (line) => {
     if (!line.trim()) return
@@ -113,7 +113,8 @@ export const inspectFireStream = async ({ query, image, onChunk, onProgress, onD
         response: payload.response ?? finalPayload.response,
         usage: payload.usage || {},
         yolo: payload.yolo || null,
-        trace: payload.trace || null
+        trace: payload.trace || null,
+        history: payload.history || null
       }
       onDone?.(finalPayload)
       return
@@ -220,6 +221,14 @@ export const createInspectionReview = (recordId, payload) => {
 
 export const deleteInspectionReview = (reviewId) => {
   return api.delete(`/history/reviews/${encodeURIComponent(reviewId)}`)
+}
+
+export const fetchInspectionRevisions = (recordId) => {
+  return api.get(`/history/inspections/${encodeURIComponent(recordId)}/revisions`)
+}
+
+export const createInspectionRevision = (recordId, payload) => {
+  return api.post(`/history/inspections/${encodeURIComponent(recordId)}/revisions`, payload)
 }
 
 export const checkPipesHealth = () => {
