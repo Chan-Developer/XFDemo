@@ -39,10 +39,7 @@ const ui = {
   delete: '\u5220\u9664',
   deleteConfirm: '\u786e\u5b9a\u5220\u9664\u8fd9\u6761\u68c0\u6d4b\u5386\u53f2\u5417\uff1f',
   deleting: '\u5220\u9664\u4e2d...',
-  reviewTitle: '\u4eba\u5de5\u590d\u6838',
-  reviewNone: '\u6682\u65e0\u590d\u6838\u8bb0\u5f55',
   traceTitle: '\u5904\u7406\u8bb0\u5f55',
-  traceHint: '\u5206\u6790 \u00b7 \u6838\u9a8c \u00b7 \u7559\u5b58',
   traceEmpty: '\u6682\u65e0\u5904\u7406\u8bb0\u5f55',
   reportHint: '\u7ed3\u8bba\u4e0e\u5b8c\u6574\u8bf4\u660e'
 }
@@ -123,6 +120,7 @@ const issueTitleOf = (issue) => {
   if (text.includes('\u7f3a\u5931') || text.includes('missing')) return '\u5b8c\u6574\u6027\u7ed3\u679c\u5df2\u590d\u67e5'
   return '\u9636\u6bb5\u7ed3\u679c\u5df2\u8c03\u6574'
 }
+const traceIssueTextOf = (record) => traceIssuesOf(record).map(issueTitleOf).join('、')
 const stageMainText = (stage) => {
   if (stage.name === 'qwen_first') {
     const output = stage.output || {}
@@ -348,29 +346,19 @@ onMounted(loadHistory)
                 <span v-for="label in labelsOf(record)" :key="`${record.id}-${label}`">{{ label }}</span>
               </div>
               <p v-else class="history-card__manual-note">当前结论已人工修订，以完整报告为准。</p>
-              <details class="history-review">
-                <summary class="history-action">
-                  <span class="history-action__icon"><ClipboardCheck :size="16" :stroke-width="2" /></span>
-                  <strong class="history-action__label">{{ ui.reviewTitle }}</strong>
-                  <span class="history-action__meta">
-                    {{ reviewNoteOf(record) ? '已填写复核说明' : ui.reviewNone }}
+              <section :class="['history-review-note', { 'history-review-note--empty': !reviewNoteOf(record) }]">
+                <div class="history-review-note__heading">
+                  <span class="history-review-note__icon">
+                    <ClipboardCheck :size="16" :stroke-width="2" />
                   </span>
-                  <ChevronDown class="history-action__chevron" :size="16" :stroke-width="2" />
-                </summary>
-                <div class="history-review__body">
-                  <div v-if="reviewNoteOf(record)" class="history-review__note">
-                    <div>
-                      <strong>复核说明</strong>
-                      <span v-if="latestReportRevision(record)">
-                        {{ latestReportRevision(record).createdText }} ·
-                        {{ latestReportRevision(record).editor?.name || '当前用户' }}
-                      </span>
-                    </div>
-                    <p>{{ reviewNoteOf(record) }}</p>
-                  </div>
-                  <p v-else class="history-review__empty">当前记录尚未进行人工修订。</p>
+                  <strong>复核说明</strong>
+                  <span v-if="latestReportRevision(record)" class="history-review-note__meta">
+                    {{ latestReportRevision(record).createdText }} ·
+                    {{ latestReportRevision(record).editor?.name || '当前用户' }}
+                  </span>
                 </div>
-              </details>
+                <p>{{ reviewNoteOf(record) || '当前记录尚未进行人工复核。' }}</p>
+              </section>
               <details v-if="reportRevisionCount(record)" class="history-revisions">
                 <summary class="history-action">
                   <span class="history-action__icon"><History :size="16" :stroke-width="2" /></span>
@@ -386,29 +374,38 @@ onMounted(loadHistory)
                 <summary class="history-action">
                   <span class="history-action__icon"><Workflow :size="16" :stroke-width="2" /></span>
                   <strong class="history-action__label">{{ ui.traceTitle }}</strong>
-                  <span class="history-action__meta">{{ ui.traceHint }}</span>
+                  <span class="history-action__meta">
+                    {{ traceStagesOf(record).length }} 个阶段 ·
+                    {{ formatDuration(record.trace?.summary?.totalDurationMs) }}
+                  </span>
                   <ChevronDown class="history-action__chevron" :size="16" :stroke-width="2" />
                 </summary>
                 <div v-if="traceStagesOf(record).length" class="history-trace__body">
-                  <p class="history-trace__note">记录本次任务的处理阶段、运行状态和关键结论，用于核对结果形成过程。</p>
                   <div class="history-trace__summary">
-                    <span>&#x603b;&#x8017;&#x65f6; {{ formatDuration(record.trace?.summary?.totalDurationMs) }}</span>
-                    <span>&#x95ee;&#x9898; {{ traceIssuesOf(record).length }} &#x4e2a;</span>
+                    <span>共 {{ traceStagesOf(record).length }} 个阶段</span>
+                    <span>总耗时 {{ formatDuration(record.trace?.summary?.totalDurationMs) }}</span>
+                    <span v-if="traceIssuesOf(record).length">{{ traceIssuesOf(record).length }} 项复核关注</span>
                   </div>
-                  <div
-                    v-for="stage in traceStagesOf(record)"
-                    :key="`${record.id}-${stage.name}`"
-                    :class="['history-trace__stage', `history-trace__stage--${stage.status || 'ok'}`]"
-                  >
-                    <div>
-                      <strong>{{ stageTitleOf(stage) }}</strong>
-                      <span>{{ stageStatusText(stage) }} &middot; {{ formatDuration(stage.durationMs) }}</span>
-                    </div>
-                    <p>{{ stageMainText(stage) }}</p>
-                  </div>
-                  <div v-if="traceIssuesOf(record).length" class="history-trace__issues">
-                    <span v-for="issue in traceIssuesOf(record)" :key="`${record.id}-${issue.type}`">{{ issueTitleOf(issue) }}</span>
-                  </div>
+                  <ol class="history-trace__timeline">
+                    <li
+                      v-for="stage in traceStagesOf(record)"
+                      :key="`${record.id}-${stage.name}`"
+                      :class="['history-trace__stage', `history-trace__stage--${stage.status || 'ok'}`]"
+                    >
+                      <span class="history-trace__marker" aria-hidden="true"></span>
+                      <div class="history-trace__stage-content">
+                        <div class="history-trace__stage-heading">
+                          <strong>{{ stageTitleOf(stage) }}</strong>
+                          <span>{{ stageStatusText(stage) }} · {{ formatDuration(stage.durationMs) }}</span>
+                        </div>
+                        <p>{{ stageMainText(stage) }}</p>
+                      </div>
+                    </li>
+                  </ol>
+                  <p v-if="traceIssuesOf(record).length" class="history-trace__issues">
+                    <strong>复核关注：</strong>
+                    {{ traceIssueTextOf(record) }}
+                  </p>
                 </div>
                 <p v-else class="history-trace__empty">{{ ui.traceEmpty }}</p>
               </details>
@@ -741,7 +738,6 @@ onMounted(loadHistory)
 
 
 
-.history-review,
 .history-revisions,
 .history-trace,
 .history-report {
@@ -820,42 +816,60 @@ details[open] > .history-action .history-action__chevron {
   transform: rotate(180deg);
 }
 
-.history-review__body {
-  margin-top: var(--spacing-sm);
-}
-
-.history-review__note {
+.history-review-note {
   display: grid;
-  gap: 8px;
-  padding: 12px;
-  border-left: 3px solid var(--color-gray-300);
-  border-radius: 6px;
-  background: #fafafa;
+  gap: 9px;
+  margin-top: 2px;
+  padding: 13px 14px;
+  border: 1px solid #e4e5e8;
+  border-radius: var(--radius-md);
+  background: #fff;
 }
 
-.history-review__note > div {
+.history-review-note__heading {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
 }
 
-.history-review__note strong {
+.history-review-note__icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+}
+
+.history-review-note strong {
   color: var(--text-primary);
   font-size: var(--font-size-sm);
 }
 
-.history-review__note span {
+.history-review-note__meta {
+  margin-left: auto;
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
+  text-align: right;
 }
 
-.history-review__note p,
-.history-review__empty {
+.history-review-note p {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  line-height: 1.6;
+  padding-left: 40px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.history-review-note--empty {
+  background: #fafafa;
+}
+
+.history-review-note--empty p {
+  color: var(--text-tertiary);
 }
 
 .history-revisions__body {
@@ -863,80 +877,113 @@ details[open] > .history-action .history-action__chevron {
   padding: 4px 10px;
 }
 
-.history-trace__note {
-  margin: 0;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--radius-md);
-  background: #fff7f7;
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  line-height: 1.6;
-}
-
 .history-trace__body {
   display: grid;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-sm);
+  gap: 14px;
+  margin-top: 12px;
+  padding: 0 10px 4px;
 }
 
 .history-trace__summary {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-sm);
-  color: var(--text-secondary);
+  gap: 6px 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-gray-100);
+  color: var(--text-tertiary);
   font-size: var(--font-size-xs);
 }
 
+.history-trace__timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .history-trace__stage {
-  padding: var(--spacing-sm);
-  border-left: 4px solid var(--color-success);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
+  padding: 0 0 17px;
 }
 
-.history-trace__stage--warn {
-  border-left-color: #f59e0b;
+.history-trace__stage:last-child {
+  padding-bottom: 0;
 }
 
-.history-trace__stage--error {
-  border-left-color: var(--color-primary);
+.history-trace__stage:not(:last-child)::before {
+  position: absolute;
+  top: 13px;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+  background: #dedfe3;
+  content: '';
 }
 
-.history-trace__stage--skipped {
-  border-left-color: var(--color-gray-400);
-  background: var(--bg-tertiary);
+.history-trace__marker {
+  position: relative;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin: 5px 0 0 2px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 1px rgba(35, 122, 69, 0.28);
 }
 
-.history-trace__stage > div {
+.history-trace__stage--warn .history-trace__marker {
+  background: #d99316;
+  box-shadow: 0 0 0 1px rgba(217, 147, 22, 0.3);
+}
+
+.history-trace__stage--error .history-trace__marker {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 1px rgba(239, 59, 57, 0.3);
+}
+
+.history-trace__stage--skipped .history-trace__marker {
+  background: var(--color-gray-400);
+  box-shadow: 0 0 0 1px rgba(148, 151, 158, 0.3);
+}
+
+.history-trace__stage-content {
+  min-width: 0;
+}
+
+.history-trace__stage-heading {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--spacing-sm);
 }
 
-.history-trace__stage span,
+.history-trace__stage-heading strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.history-trace__stage-heading span,
 .history-trace__stage p,
-.history-trace__empty {
+.history-trace__empty,
+.history-trace__issues {
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
 }
 
 .history-trace__stage p {
-  margin: var(--spacing-xs) 0 0;
+  margin: 4px 0 0;
+  line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
 .history-trace__issues {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-xs);
-}
-
-.history-trace__issues span {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-full);
-  background: #fff1f2;
-  color: var(--color-primary-dark);
-  font-size: var(--font-size-xs);
+  margin: 0;
+  padding-top: 11px;
+  border-top: 1px solid var(--color-gray-100);
+  line-height: 1.6;
 }
 
 .history-report__content {
@@ -1167,6 +1214,22 @@ details[open] > .history-action .history-action__chevron {
 
   .history-grid {
     grid-template-columns: 1fr;
+  }
+
+  .history-review-note__heading,
+  .history-trace__stage-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .history-review-note__meta {
+    width: 100%;
+    margin-left: 40px;
+    text-align: left;
+  }
+
+  .history-review-note p {
+    padding-left: 0;
   }
 }
 </style>
