@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import asdict
 from typing import Any, Callable
 
 from backend.infrastructure.vision.yolo_detector import run_yolo_detection
-from backend.modules.inspection.intent import IntentResult, explicit_intent, rule_based_intent
+from backend.modules.inspection.intent import IntentResult
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -20,6 +21,17 @@ ROUTE_ORDER = (
 INDOOR_CORE_LABELS = {"水带", "水枪", "软管", "栓体", "接口", "手轮", "阀门", "控制器"}
 INDOOR_STRONG_SINGLE_LABELS = {"水带", "水枪", "软管", "栓体"}
 APPEARANCE_LABELS = {"消火栓", "箱门", "中文标识", "操作说明"}
+
+# Component presence may use the detector's 0.20 confidence floor. Device
+# routing is intentionally stricter because a wrong branch produces an
+# entirely unrelated report.
+INDOOR_STRONG_SINGLE_CONF = float(os.getenv("YOLO_ROUTE_INDOOR_SINGLE_CONF", "0.65"))
+APPEARANCE_BOX_CONF = float(os.getenv("YOLO_ROUTE_APPEARANCE_BOX_CONF", "0.35"))
+OUTDOOR_ROUTE_CONF = float(os.getenv("YOLO_ROUTE_OUTDOOR_CONF", "0.55"))
+EXTINGUISHER_ROUTE_CONF = float(os.getenv("YOLO_ROUTE_EXTINGUISHER_CONF", "0.60"))
+EXTINGUISHER_PAIR_BODY_CONF = float(os.getenv("YOLO_ROUTE_EXTINGUISHER_PAIR_BODY_CONF", "0.45"))
+EXTINGUISHER_PAIR_PRESSURE_CONF = float(os.getenv("YOLO_ROUTE_EXTINGUISHER_PAIR_PRESSURE_CONF", "0.50"))
+ROUTE_SCORE_MARGIN = float(os.getenv("YOLO_ROUTE_SCORE_MARGIN", "0.10"))
 
 
 def _emit(callback: ProgressCallback | None, **payload: Any) -> None:
@@ -50,10 +62,11 @@ def _route_match(task: str, result: dict[str, Any]) -> tuple[bool, float, str]:
     if task == "internal_components":
         core = labels & INDOOR_CORE_LABELS
         strong_single = any(
-            _label(item) in INDOOR_STRONG_SINGLE_LABELS and _confidence(item) >= 0.55
+            _label(item) in INDOOR_STRONG_SINGLE_LABELS
+            and _confidence(item) >= INDOOR_STRONG_SINGLE_CONF
             for item in detections
         )
-        matched = len(core) >= 2 or strong_single
+        matched = (len(core) >= 2 and highest >= 0.30) or strong_single
         reason = (
             f"发现 {len(core)} 类室内核心组件，最高置信度 {highest:.2f}"
             if matched
@@ -64,9 +77,13 @@ def _route_match(task: str, result: dict[str, Any]) -> tuple[bool, float, str]:
 
     if task == "appearance":
         visible = labels & APPEARANCE_LABELS
-        has_box = "消火栓" in visible or "箱门" in visible
+        has_box = any(
+            _label(item) in {"消火栓", "箱门"}
+            and _confidence(item) >= APPEARANCE_BOX_CONF
+            for item in detections
+        )
         has_identity = "中文标识" in visible or "操作说明" in visible
-        matched = (has_box and has_identity) or len(visible) >= 3
+        matched = (has_box and has_identity) or (len(visible) >= 3 and highest >= 0.40)
         reason = (
             f"发现室内箱体组合证据：{'、'.join(sorted(visible))}"
             if matched
@@ -78,7 +95,7 @@ def _route_match(task: str, result: dict[str, Any]) -> tuple[bool, float, str]:
     if task == "outdoor_hydrant":
         candidates = [item for item in detections if _label(item) == "室外消火栓"]
         top = max((_confidence(item) for item in candidates), default=0.0)
-        matched = top >= 0.25
+        matched = top >= OUTDOOR_ROUTE_CONF
         return matched, top, f"室外消火栓最高置信度 {top:.2f}"
 
     extinguisher = max(
@@ -89,71 +106,48 @@ def _route_match(task: str, result: dict[str, Any]) -> tuple[bool, float, str]:
         (_confidence(item) for item in detections if _label(item) == "灭火器压力指示器"),
         default=0.0,
     )
-    matched = extinguisher >= 0.30 or pressure >= 0.40
-    paired_bonus = 0.12 if extinguisher >= 0.30 and pressure >= 0.40 else 0.0
+    paired = (
+        extinguisher >= EXTINGUISHER_PAIR_BODY_CONF
+        and pressure >= EXTINGUISHER_PAIR_PRESSURE_CONF
+    )
+    matched = extinguisher >= EXTINGUISHER_ROUTE_CONF or paired
+    paired_bonus = 0.12 if paired else 0.0
     score = min(1.0, max(extinguisher, pressure) + paired_bonus)
     return matched, score, f"灭火器 {extinguisher:.2f}，压力指示器 {pressure:.2f}"
 
 
-def _explicit_route(explicit_task: str | None) -> tuple[IntentResult, str] | None:
-    intent = explicit_intent(explicit_task)
-    if not intent:
-        return None
-    task = {
-        "indoor_hydrant": "internal_components",
-        "outdoor_hydrant": "outdoor_hydrant",
-        "fire_extinguisher": "fire_extinguisher",
-    }[intent.inspection_type]
-    return intent, task
+def _unknown_intent(evidence: str, source: str = "yolo_router") -> IntentResult:
+    return IntentResult(
+        inspection_type="unknown",
+        confidence=0.0,
+        scope_hint="unknown",
+        evidence=evidence,
+        source=source,
+    )
 
 
 def resolve_yolo_route(
     image: str | None,
-    query: str,
+    query: str = "",
     explicit_task: str | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> tuple[IntentResult, dict[str, Any], dict[str, Any]]:
     started = time.perf_counter()
     probes: list[dict[str, Any]] = []
 
-    explicit = _explicit_route(explicit_task)
-    if explicit:
-        intent, task = explicit
-        _emit(
-            progress_callback,
-            stage="route",
-            status="running",
-            label=f"正在定位{intent.display_name}",
-            detail="已采用用户指定的检测类型",
-        )
-        probe_started = time.perf_counter()
-        result = run_yolo_detection(image, task=task)
-        duration_ms = int((time.perf_counter() - probe_started) * 1000)
-        probes.append({
-            "task": task,
-            "inspectionType": intent.inspection_type,
-            "matched": True,
-            "score": 1.0,
-            "reason": "用户显式指定检测类型",
-            "durationMs": duration_ms,
-            "result": result,
-        })
-        return intent, result, {
-            "source": "explicit",
-            "latencyMs": int((time.perf_counter() - started) * 1000),
-            "probes": probes,
-            "selectedTask": task,
-            "selectedReason": "用户显式指定检测类型",
-        }
+    # The product only uploads an image. Keep these arguments for API
+    # compatibility, but never let fixed request text or a fixed task choose
+    # the report branch.
+    _ = query, explicit_task
 
     if not image:
-        fallback = rule_based_intent(query)
-        return fallback, {"enabled": False, "detections": [], "reason": "no image"}, {
-            "source": "rule_fallback",
+        intent = _unknown_intent("未提供图片，无法确认消防设施类型", "no_image")
+        return intent, {"enabled": False, "detections": [], "reason": "no image"}, {
+            "source": "no_image",
             "latencyMs": 0,
             "probes": probes,
             "selectedTask": "",
-            "selectedReason": "未提供图片，使用问题关键词兜底",
+            "selectedReason": intent.evidence,
         }
 
     def run_probe(
@@ -197,14 +191,22 @@ def resolve_yolo_route(
         )
         return probe
 
-    def selected_response(probe: dict[str, Any]) -> tuple[IntentResult, dict[str, Any], dict[str, Any]]:
+    def selected_response(
+        inspection_type: str,
+        probe: dict[str, Any],
+        score: float,
+        reason: str,
+    ) -> tuple[IntentResult, dict[str, Any], dict[str, Any]]:
         task = str(probe["task"])
-        route = next(item for item in ROUTE_ORDER if item[0] == task)
-        _task, inspection_type, scope_hint, _label_text = route
-        reason = str(probe["reason"])
+        scope_hint = {
+            "internal_components": "internal_components",
+            "appearance": "appearance",
+            "outdoor_hydrant": "outdoor",
+            "fire_extinguisher": "extinguisher",
+        }.get(task, "unknown")
         intent = IntentResult(
             inspection_type=inspection_type,
-            confidence=max(0.45, min(float(probe["score"]), 1.0)),
+            confidence=max(0.0, min(score, 1.0)),
             scope_hint=scope_hint,
             evidence=reason,
             source="yolo_router",
@@ -217,48 +219,76 @@ def resolve_yolo_route(
             "selectedReason": reason,
         }
 
-    for route in ROUTE_ORDER[:2]:
-        probe = run_probe(route, "优先核验室内消火栓组件与箱体证据")
-        if probe["matched"]:
-            return selected_response(probe)
-
-    branch_candidates = [
+    # Run every detector before choosing a branch. This removes the previous
+    # indoor-first short circuit.
+    for route in ROUTE_ORDER:
         run_probe(
             route,
-            "核验室外消火栓、灭火器与压力指示器，并在候选间比较证据强度",
+            "独立提取消防设施类别证据，全部完成后统一比较",
         )
-        for route in ROUTE_ORDER[2:]
-    ]
-    matched_candidates = [probe for probe in branch_candidates if probe["matched"]]
-    if matched_candidates:
-        selected = max(matched_candidates, key=lambda item: float(item["score"]))
-        if len(matched_candidates) > 1:
-            selected["reason"] = (
-                f"{selected['reason']}；与其他分支比较后证据得分最高 "
-                f"{float(selected['score']):.2f}"
-            )
-        return selected_response(selected)
 
-    fallback = rule_based_intent(query)
-    fallback = IntentResult(
-        inspection_type=fallback.inspection_type,
-        confidence=min(fallback.confidence, 0.45),
-        scope_hint=fallback.scope_hint,
-        evidence="所有 YOLO 路由候选均未达到阈值；" + fallback.evidence,
-        source="rule_fallback",
-    )
-    selected_task = {
-        "indoor_hydrant": "internal_components",
-        "outdoor_hydrant": "outdoor_hydrant",
-        "fire_extinguisher": "fire_extinguisher",
-    }.get(fallback.inspection_type, "internal_components")
-    selected_probe = next((item for item in probes if item["task"] == selected_task), probes[0])
-    return fallback, selected_probe["result"], {
-        "source": "rule_fallback",
+    indoor_probes = [
+        probe
+        for probe in probes
+        if probe["inspectionType"] == "indoor_hydrant" and probe["matched"]
+    ]
+    candidates: list[dict[str, Any]] = []
+    if indoor_probes:
+        selected_indoor = max(indoor_probes, key=lambda item: float(item["score"]))
+        indoor_score = min(
+            1.0,
+            float(selected_indoor["score"]) + (0.08 if len(indoor_probes) > 1 else 0.0),
+        )
+        candidates.append({
+            "inspectionType": "indoor_hydrant",
+            "score": indoor_score,
+            "probe": selected_indoor,
+            "reason": "；".join(str(item["reason"]) for item in indoor_probes),
+        })
+
+    for inspection_type in ("outdoor_hydrant", "fire_extinguisher"):
+        probe = next(
+            item
+            for item in probes
+            if item["inspectionType"] == inspection_type
+        )
+        if probe["matched"]:
+            candidates.append({
+                "inspectionType": inspection_type,
+                "score": float(probe["score"]),
+                "probe": probe,
+                "reason": str(probe["reason"]),
+            })
+
+    ranked = sorted(candidates, key=lambda item: float(item["score"]), reverse=True)
+    if ranked:
+        selected = ranked[0]
+        if len(ranked) == 1 or (
+            float(selected["score"]) - float(ranked[1]["score"]) >= ROUTE_SCORE_MARGIN
+        ):
+            return selected_response(
+                str(selected["inspectionType"]),
+                selected["probe"],
+                float(selected["score"]),
+                str(selected["reason"]),
+            )
+        reason = (
+            f"类别证据冲突：{selected['inspectionType']} {float(selected['score']):.2f}，"
+            f"{ranked[1]['inspectionType']} {float(ranked[1]['score']):.2f}"
+        )
+        source = "yolo_ambiguous"
+    else:
+        reason = "所有 YOLO 类别证据均未达到设备路由阈值"
+        source = "yolo_no_match"
+
+    strongest = max(probes, key=lambda item: float(item["score"]))
+    intent = _unknown_intent(reason, source)
+    return intent, strongest["result"], {
+        "source": source,
         "latencyMs": int((time.perf_counter() - started) * 1000),
         "probes": probes,
-        "selectedTask": selected_task,
-        "selectedReason": fallback.evidence,
+        "selectedTask": "",
+        "selectedReason": reason,
     }
 
 

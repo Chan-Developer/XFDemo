@@ -33,6 +33,7 @@ from backend.modules.inspection.postprocess import enforce_report_scope, guarded
 from backend.config.settings import get_settings
 from backend.modules.inspection.trace import build_trace_summary, trace_stage
 from backend.modules.inspection.registry import get_branch
+from backend.modules.inspection.intent import resolve_intent
 from backend.modules.inspection.router import resolve_yolo_route, route_trace_payload
 from backend.modules.inspection.types import InspectionState, Settings
 from backend.modules.inspection.utils import normalize_image, strip_reasoning, trim_output
@@ -40,6 +41,15 @@ from backend.modules.inspection.yolo_context import apply_yolo_backstop, missing
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
+
+UNKNOWN_REPORT = """一、检测结论：无法判断
+当前图片未能可靠确认检测对象属于室内消火栓、室外消火栓或灭火器，请补充主体完整、清晰且无遮挡的现场图片后重新检测。
+
+二、涉及法律法规
+该功能建设中
+
+三、整改建议
+请重新拍摄消防设施主体及其关键部位，确保设备轮廓、标识和组件清晰可见。"""
 
 
 def expected_scope_for_branch(branch_key: str, task: str) -> str:
@@ -57,11 +67,45 @@ def emit_progress(callback: ProgressCallback | None, **payload: Any) -> None:
 
 def prepare_input(state: InspectionState) -> InspectionState:
     query = (state.get("query") or "").strip()
-    if not query:
-        raise ValueError("Query is required")
     image = normalize_image(state.get("image"))
-    task = detect_task(query=query, explicit_task=state.get("task"))
+    if not image:
+        raise ValueError("Image is required")
+    if not query:
+        query = "请检测图片中的消防设施"
+    # The product has no user-entered question or manual branch selection.
+    task = "auto"
     return {"query": query, "image": image, "task": task, "messages": build_messages(query=query, image=image, task=task)}
+
+
+def _probe_for_intent(
+    route_meta: dict[str, Any],
+    inspection_type: str,
+    scope_hint: str,
+) -> tuple[dict[str, Any], str]:
+    preferred_task = {
+        "outdoor_hydrant": "outdoor_hydrant",
+        "fire_extinguisher": "fire_extinguisher",
+    }.get(inspection_type)
+    if inspection_type == "indoor_hydrant":
+        preferred_task = (
+            scope_hint
+            if scope_hint in {"appearance", "internal_components"}
+            else "internal_components"
+        )
+
+    probes = list(route_meta.get("probes") or [])
+    probe = next(
+        (item for item in probes if item.get("task") == preferred_task),
+        None,
+    )
+    if not probe and inspection_type == "indoor_hydrant":
+        indoor = [
+            item
+            for item in probes
+            if item.get("inspectionType") == "indoor_hydrant"
+        ]
+        probe = max(indoor, key=lambda item: float(item.get("score") or 0), default=None)
+    return (probe or {}).get("result") or {}, str((probe or {}).get("task") or preferred_task or "")
 
 
 class InspectionAgent:
@@ -116,10 +160,85 @@ class InspectionAgent:
 
         intent, yolo_result, route_meta = resolve_yolo_route(
             image,
-            prepared.get("query", ""),
-            explicit_task=(data or {}).get("inspection_type") or (data or {}).get("task"),
             progress_callback=progress_callback,
         )
+        route_review_usage: dict[str, int] = {}
+        if intent.inspection_type == "unknown":
+            emit_progress(
+                progress_callback,
+                stage="route_review",
+                status="running",
+                label="正在确认消防设施类型",
+                detail="目标检测证据不足或存在冲突，正在根据原图确认主体设备",
+            )
+            stage_started = time.perf_counter()
+            reviewed_intent, review_meta = resolve_intent(self.judge_model, "", image)
+            route_review_usage = dict(review_meta.get("usage") or {})
+            stages.append(trace_stage(
+                "image_type_review",
+                "图像主体类型复核",
+                stage_started,
+                status="ok" if reviewed_intent.inspection_type != "unknown" else "warn",
+                inspectionType=reviewed_intent.inspection_type,
+                confidence=reviewed_intent.confidence,
+                evidence=reviewed_intent.evidence,
+                rawOutput=review_meta.get("rawOutput", ""),
+                error=review_meta.get("error", ""),
+                usage=route_review_usage,
+            ))
+            if reviewed_intent.inspection_type != "unknown":
+                intent = reviewed_intent
+                yolo_result, reviewed_task = _probe_for_intent(
+                    route_meta,
+                    intent.inspection_type,
+                    intent.scope_hint,
+                )
+                route_meta.update({
+                    "source": "yolo_vlm_confirmed",
+                    "selectedTask": reviewed_task,
+                    "selectedReason": intent.evidence,
+                })
+                emit_progress(
+                    progress_callback,
+                    stage="route_review",
+                    status="complete",
+                    label=f"已确认{intent.display_name}",
+                    detail=intent.evidence,
+                    elapsedMs=review_meta.get("latencyMs", 0),
+                )
+            else:
+                prepared["inspection_type"] = "unknown"
+                prepared["inspection_name"] = "无法判断"
+                prepared["intent"] = route_trace_payload(intent, route_meta)
+                trace = {
+                    "version": "image-only-router-v3",
+                    "inspectionType": "unknown",
+                    "inspectionName": "无法判断",
+                    "stages": stages,
+                    "summary": {
+                        "result": "图像证据不足，未进入任何专业检测分支",
+                        "usage": route_review_usage,
+                    },
+                }
+                emit_progress(
+                    progress_callback,
+                    stage="route_review",
+                    status="complete",
+                    label="当前图片无法确认检测对象",
+                    detail="未进入室内消火栓、室外消火栓或灭火器报告分支",
+                    elapsedMs=review_meta.get("latencyMs", 0),
+                )
+                return {
+                    **prepared,
+                    "task": "unknown",
+                    "raw_report": UNKNOWN_REPORT,
+                    "structured_report": UNKNOWN_REPORT,
+                    "report": UNKNOWN_REPORT,
+                    "usage": route_review_usage,
+                    "yolo": yolo_result,
+                    "trace": trace,
+                }
+
         branch = get_branch(intent.inspection_type)
         requested_task = str(prepared.get("task") or "auto")
         prepared["inspection_type"] = intent.inspection_type
@@ -219,14 +338,14 @@ class InspectionAgent:
             throughput=stages[-1].get("throughput", {}),
         )
         final_report = raw_report
-        usage = dict(first.usage)
+        usage = merge_usage(route_review_usage, first.usage)
         reviewed_text = ""
 
         # YOLO chooses the indoor branch, while the established indoor flow
         # still decides appearance vs. internal components from the first VLM
         # report and reruns the matching detector when needed.
         if image and branch.key == "indoor_hydrant":
-            judge_task = detect_task(prepared.get("query", ""), requested_task, raw_report)
+            judge_task = detect_task("", requested_task, raw_report)
             if judge_task == "auto":
                 judge_task = "internal_components" if "内部" in raw_report else "appearance"
             expected_scope = expected_scope_for_branch(branch.key, judge_task)
@@ -487,7 +606,7 @@ class InspectionAgent:
         final_report = apply_yolo_backstop(final_report, raw_report, yolo_result)
         final_report = enforce_report_scope(final_report, expected_scope)
         trace = {
-            "version": "yolo-priority-router-branch-judge-v2",
+            "version": "image-only-router-branch-judge-v3",
             "inspectionType": intent.inspection_type,
             "inspectionName": branch.name,
             "stages": stages,

@@ -17,8 +17,8 @@ INSPECTION_TYPES = {
 }
 
 
-INTENT_PROMPT = """你是消防设施图片的任务分流器。
-请只判断用户图片和问题最适合进入哪个检测分支，不要做合规结论。
+INTENT_PROMPT = """你是消防设施图片的对象分类器。
+只根据当前图片中的主体设备判断检测分支，不要参考任何固定任务文案，不要做合规结论。
 
 可选 inspection_type：
 1. indoor_hydrant：室内消火栓箱内部或箱体外观，包括水带、水枪、栓口、箱门、标识等。
@@ -34,6 +34,8 @@ INTENT_PROMPT = """你是消防设施图片的任务分流器。
   "evidence": "一句话说明你看到的关键对象"
 }
 """
+
+IMAGE_INTENT_MIN_CONFIDENCE = 0.65
 
 
 @dataclass(frozen=True)
@@ -79,7 +81,8 @@ def explicit_intent(value: str | None) -> IntentResult | None:
 
 
 def build_intent_messages(query: str, image: str | None) -> list[dict[str, Any]]:
-    parts: list[dict[str, Any]] = [{"type": "text", "text": f"{INTENT_PROMPT}\n用户问题：{query or '请判断图片中的消防设施异常'}"}]
+    _ = query
+    parts: list[dict[str, Any]] = [{"type": "text", "text": INTENT_PROMPT}]
     if image:
         parts.insert(0, {"type": "image_url", "image_url": {"url": image}})
     return [{"role": "user", "content": parts}]
@@ -112,18 +115,14 @@ def parse_intent_output(text: str) -> IntentResult | None:
 
 
 def rule_based_intent(query: str, explicit_task: str | None = None) -> IntentResult:
-    explicit = explicit_intent(explicit_task)
-    if explicit:
-        return explicit
-    text = (query or "").lower()
-    if any(token in text for token in ("灭火器", "压力表", "压力指示器", "extinguisher")):
-        return IntentResult("fire_extinguisher", 0.72, "extinguisher", "问题中出现灭火器相关关键词", "rule")
-    if any(token in text for token in ("室外消火栓", "地上消火栓", "地下消火栓", "outdoor hydrant")):
-        return IntentResult("outdoor_hydrant", 0.72, "outdoor", "问题中出现室外消火栓相关关键词", "rule")
-    if any(token in text for token in ("水带", "水枪", "栓口", "卷盘", "箱体外观", "室内消火栓", "消火栓箱")):
-        scope = "appearance" if "外观" in text else "internal_components"
-        return IntentResult("indoor_hydrant", 0.68, scope, "问题中出现室内消火栓箱相关关键词", "rule")
-    return IntentResult("indoor_hydrant", 0.45, "internal_components", "未明确识别品类，默认进入室内消火栓分支", "fallback")
+    _ = query, explicit_task
+    return IntentResult(
+        "unknown",
+        0.0,
+        "unknown",
+        "图像证据不足，禁止默认进入室内消火栓分支",
+        "fallback",
+    )
 
 
 def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str | None = None) -> tuple[IntentResult, dict[str, Any]]:
@@ -136,18 +135,35 @@ def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str
         response = model.invoke(build_intent_messages(query, image))
         parsed = parse_intent_output(response.content)
         latency_ms = int((time.perf_counter() - started) * 1000)
-        if parsed and parsed.inspection_type != "unknown" and parsed.confidence >= 0.45:
+        if (
+            parsed
+            and parsed.inspection_type != "unknown"
+            and parsed.confidence >= IMAGE_INTENT_MIN_CONFIDENCE
+        ):
             return parsed, {"latencyMs": latency_ms, "usage": response.usage, "error": ""}
-        fallback = rule_based_intent(query, explicit_task)
-        return fallback, {
+        unknown = IntentResult(
+            "unknown",
+            parsed.confidence if parsed else 0.0,
+            "unknown",
+            (parsed.evidence if parsed else "") or "图像对象分类置信度不足",
+            "qwen_vl",
+            parsed.raw_output if parsed else "",
+        )
+        return unknown, {
             "latencyMs": latency_ms,
             "usage": response.usage,
             "error": "low_confidence_or_unknown",
             "rawOutput": trim_output(strip_reasoning(response.content), 800),
         }
     except Exception as exc:
-        fallback = rule_based_intent(query, explicit_task)
-        return fallback, {
+        unknown = IntentResult(
+            "unknown",
+            0.0,
+            "unknown",
+            "图像对象分类服务异常，未强行选择检测分支",
+            "qwen_vl_error",
+        )
+        return unknown, {
             "latencyMs": int((time.perf_counter() - started) * 1000),
             "usage": {},
             "error": str(exc),

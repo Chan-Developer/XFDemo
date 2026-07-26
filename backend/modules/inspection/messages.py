@@ -37,7 +37,7 @@ def build_messages(
     if branch_key in {None, "", "indoor_hydrant"}:
         content_parts: list[dict[str, Any]] = [{
             "type": "text",
-            "text": f"{AUTO_PROMPT}\n\u7528\u6237\u95ee\u9898\uff1a{query}",
+            "text": f"{AUTO_PROMPT}\n固定检测任务：{query}",
         }]
         if image:
             content_parts.insert(0, {"type": "image_url", "image_url": {"url": image}})
@@ -63,7 +63,7 @@ def build_messages(
         )
     content_parts: list[dict[str, Any]] = [{
         "type": "text",
-        "text": f"{prompt}{routing_context}\n用户问题：{query}",
+        "text": f"{prompt}{routing_context}\n固定检测任务：{query}",
     }]
     if image:
         content_parts.insert(0, {"type": "image_url", "image_url": {"url": image}})
@@ -82,7 +82,7 @@ def build_judge_messages(
         yolo_text = format_yolo_for_prompt(yolo_result)
         prompt = (
             judge_prompt_for_branch(branch_key)
-            + "\n用户问题：" + query
+            + "\n固定检测任务：" + query
             + "\n\n首轮巡检输出：\n" + raw_report
             + "\n\nYOLO 目标定位线索：\n" + yolo_text
             + "\n\n请以原图为准完成最终复核。"
@@ -92,7 +92,7 @@ def build_judge_messages(
             {"type": "text", "text": prompt},
         ]}]
 
-    judge_scope = detect_task(query=query, explicit_task=task, report=raw_report)
+    judge_scope = detect_task(query="", explicit_task=task, report=raw_report)
     if judge_scope == "auto":
         judge_scope = "internal_components" if "\u5185\u90e8" in raw_report else "appearance"
     scope_text = "\u5185\u90e8\u7ec4\u4ef6" if judge_scope == "internal_components" else "\u7bb1\u4f53\u5916\u89c2"
@@ -103,7 +103,7 @@ def build_judge_messages(
         + judge_extra_for_branch(branch_key)
         + "\n\u672c\u6b21\u5efa\u8bae\u590d\u6838\u8303\u56f4\uff1a" + scope_text
         + "\n\u6ce8\u610f\uff1a\u8be5\u8303\u56f4\u53ea\u662f\u9996\u8f6e\u7ed3\u679c\u7684\u5efa\u8bae\uff1b\u5982\u679c\u539f\u56fe\u663e\u793a\u7bb1\u95e8\u5f00\u542f\u6216\u5173\u95ed\u72b6\u6001\u4e0e\u5efa\u8bae\u4e0d\u4e00\u81f4\uff0c\u4f60\u5fc5\u987b\u6309\u539f\u56fe\u91cd\u65b0\u9009\u62e9\u6b63\u786e\u8303\u56f4\u3002"
-        + "\n\u7528\u6237\u95ee\u9898\uff1a" + query
+        + "\n固定检测任务：" + query
         + "\n\n\u9996\u8f6e QwenVL \u5de1\u68c0\u8f93\u51fa\uff1a\n" + raw_report
         + "\n\nYOLO \u8f85\u52a9\u68c0\u6d4b\u7ed3\u679c\uff1a\n" + yolo_text
         + ("\n\n\u5185\u90e8\u7f3a\u5931\u7c7b\u8bef\u62a5\u515c\u5e95\u63d0\u793a\uff1a\n" + fallback_text if fallback_text else "")
@@ -283,7 +283,7 @@ def build_operation_instruction_verify_messages(
 ) -> list[dict[str, Any]]:
     prompt = (
         OPERATION_INSTRUCTION_VERIFY_PROMPT
-        + "\n用户问题：" + query
+        + "\n固定检测任务：" + query
         + "\n当前外观 YOLO 线索：" + format_yolo_for_prompt(yolo_result)
         + "\n首轮报告：\n" + first_report
         + "\n当前待复核报告：\n" + current_report
@@ -405,7 +405,7 @@ def build_bend_verify_messages(
 ) -> list[dict[str, Any]]:
     prompt = (
         BEND_VERIFY_PROMPT
-        + "\n用户问题：" + query
+        + "\n固定检测任务：" + query
         + "\n首轮报告：\n" + first_report
         + "\n当前待复核报告：\n" + current_report
     )
@@ -527,7 +527,7 @@ def build_outlet_direction_verify_messages(
 ) -> list[dict[str, Any]]:
     prompt = (
         OUTLET_DIRECTION_VERIFY_PROMPT
-        + "\n用户问题：" + query
+        + "\n固定检测任务：" + query
         + "\n当前 YOLO 组件线索：" + format_yolo_for_prompt(yolo_result)
         + "\n首轮报告：\n" + first_report
         + "\n当前待复核报告：\n" + current_report

@@ -43,7 +43,10 @@ BRANCHES: dict[str, InspectionBranch] = {
 
 
 def get_branch(key: str | None) -> InspectionBranch:
-    return BRANCHES.get(key or "", BRANCHES["indoor_hydrant"])
+    branch = BRANCHES.get(key or "")
+    if not branch:
+        raise ValueError(f"Unsupported inspection branch: {key or 'unknown'}")
+    return branch
 
 
 def yolo_task_for_branch(key: str | None, scope_hint: str | None = None) -> str:

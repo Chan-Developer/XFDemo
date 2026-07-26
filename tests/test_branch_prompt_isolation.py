@@ -26,7 +26,7 @@ class BranchPromptIsolationTests(unittest.TestCase):
         self.assertEqual(messages[0]["content"][0]["image_url"]["url"], image)
         self.assertEqual(
             messages[0]["content"][1]["text"],
-            f"{AUTO_PROMPT}\n用户问题：{query}",
+            f"{AUTO_PROMPT}\n固定检测任务：{query}",
         )
         self.assertNotIn("目标定位", messages[0]["content"][1]["text"])
 
@@ -41,7 +41,7 @@ class BranchPromptIsolationTests(unittest.TestCase):
         )
 
         prompt = messages[0]["content"][0]["text"]
-        self.assertEqual(prompt, f"{AUTO_PROMPT}\n用户问题：{query}")
+        self.assertEqual(prompt, f"{AUTO_PROMPT}\n固定检测任务：{query}")
         self.assertNotIn("已路由到", prompt)
 
 
