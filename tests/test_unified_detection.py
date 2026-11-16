@@ -6,7 +6,7 @@ from backend.infrastructure.vision.unified import canonical_name, project_result
 from backend.modules.inspection.router import resolve_yolo_route
 from backend.modules.inspection.pipeline import _probe_for_intent
 from backend.modules.inspection.messages import build_messages, build_outlet_direction_verify_messages
-from backend.modules.inspection.intent import parse_intent_output, DETECTION_ONLY_TYPES
+from backend.modules.inspection.intent import build_intent_messages, parse_intent_output, DETECTION_ONLY_TYPES
 from backend.modules.inspection.yolo_context import yolo_presence_veto_labels
 from backend.modules.history.report_document import parse_report_document, render_report_document
 from backend.modules.inspection.component_report import describe_components
@@ -23,6 +23,15 @@ def fixture():
 
 
 class UnifiedTests(unittest.TestCase):
+    def test_unified_route_uses_original_image_and_object_priority(self):
+        with patch.dict(os.environ, {"YOLO_MODE": "unified"}):
+            messages = build_intent_messages("FIXED_QUERY_MUST_NOT_ROUTE", "original-image")
+        content = messages[0]["content"]
+        self.assertEqual(content[0]["image_url"]["url"], "original-image")
+        self.assertIn("近景清晰拍摄的具体设备优先于背景环境", content[1]["text"])
+        self.assertIn("普通门不能仅凭门扇或安全出口标志认定为防火门", content[1]["text"])
+        self.assertNotIn("FIXED_QUERY_MUST_NOT_ROUTE", content[1]["text"])
+
     def test_direction_review_does_not_copy_previous_claim(self):
         messages = build_outlet_direction_verify_messages("original-image", "检查", "FIRST_MARKER", "REVIEW_MARKER", fixture())
         text = messages[0]["content"][1]["text"]

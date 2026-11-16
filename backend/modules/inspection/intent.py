@@ -100,6 +100,12 @@ def build_intent_messages(query: str, image: str | None) -> list[dict[str, Any]]
             "evacuation_passage适用于楼梯、走廊、通道场景，包括被杂物占用的通道，"
             "不要求图中有独立消防设备；不得因只有通道而返回unknown。"
             "water_supply是消防泵、供水管路等设施，wet_alarm_valve是湿式报警阀及其附属仪表阀件。"
+            "主体选择：近景清晰拍摄的具体设备优先于背景环境；设备处于走廊、楼梯口或车库入口，"
+            "不代表主体就是evacuation_passage。fire_door适用于以门扇、门框、闭门器为拍摄主体，"
+            "且有防火门标识或其他清晰防火门证据的图片；门处于开启状态也不改变设备类别。"
+            "普通门不能仅凭门扇或安全出口标志认定为防火门。"
+            "sprinkler适用于喷头特写或以喷头为明确主体的图片；"
+            "仅当整体通道是主体、多个设备只是环境中的小部分时选择evacuation_passage。"
             "透明箱门关闭仍是appearance，打开才是internal_components，不因看见内部组件改变开闭状态。"
             "多种主体无法确定或无关图片返回unknown，不要强行归入消火栓或灭火器。\n"
             '只输出JSON：{"inspection_type":"上述合法值", "confidence":0.0, '
