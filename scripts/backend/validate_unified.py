@@ -13,6 +13,13 @@ from backend.config.settings import get_settings
 from backend.infrastructure.vision.yolo_detector import run_yolo_detection
 
 
+def validate_scope(state, expected):
+    """Compare configured scope codes with the report's localized scope names."""
+    expected_name = {"appearance": "箱体外观", "internal_components": "内部组件"}.get(expected, expected)
+    actual = state['trace']['summary']['final']['scope']
+    assert actual == expected_name, f'expected scope {expected_name!r}, got {actual!r}'
+
+
 def validate_public(base_url):
     """Exercise the real proxy, authentication, stream and history; remove only test data."""
     import requests
@@ -34,7 +41,7 @@ def validate_public(base_url):
         response.raise_for_status()
         user_id = response.json()['user']['id']
         source = json.loads(Path(os.environ['VALIDATION_SOURCE']).read_text())
-        for branch in ('fire_extinguisher', 'fire_door'):
+        for branch in ('fire_extinguisher', 'fire_door', 'water_pump_connector'):
             sample = next(row for row in source if row['branch'] == branch)
             payload = {'query': '检查图片中的消防设施', 'image': 'data:image/jpeg;base64,' +
                        base64.b64encode(Path(sample['image']).read_bytes()).decode()}
@@ -58,7 +65,7 @@ def validate_public(base_url):
                 assert image_response.headers['Content-Type'].startswith('image/')
             saved = session.get(base_url + '/api/history/inspections/' + record['id'] + '/revisions', timeout=15)
             saved.raise_for_status()
-            if branch == 'fire_door':
+            if branch in ('fire_door', 'water_pump_connector'):
                 assert record['modelReportDocument']['verdict'] == 'not_assessed'
             rows.append({'branch': branch, 'passed': True, 'seconds': round(time.monotonic() - started, 2),
                          'report': done['response'], 'historyId': record['id'], 'imageEndpoints': 'passed'})
@@ -118,7 +125,7 @@ def main():
                 assert row['detectionCount'] > 0, 'expected component boxes'
                 assert state['report'], 'empty report'
                 if os.getenv('VALIDATION_EXPECT_SCOPE'):
-                    assert state['trace']['summary']['final']['scope'] == os.environ['VALIDATION_EXPECT_SCOPE']
+                    validate_scope(state, os.environ['VALIDATION_EXPECT_SCOPE'])
                 if os.getenv('VALIDATION_FORBID_LABEL'):
                     assert os.environ['VALIDATION_FORBID_LABEL'] not in state['trace']['summary']['final']['labels']
             row['passed'] = True

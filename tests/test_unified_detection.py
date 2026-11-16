@@ -32,6 +32,14 @@ class UnifiedTests(unittest.TestCase):
         self.assertIn("普通门不能仅凭门扇或安全出口标志认定为防火门", content[1]["text"])
         self.assertNotIn("FIXED_QUERY_MUST_NOT_ROUTE", content[1]["text"])
 
+    def test_scope_validation_accepts_codes_but_rejects_wrong_scope(self):
+        from scripts.backend.validate_unified import validate_scope
+        state = {"trace": {"summary": {"final": {"scope": "箱体外观"}}}}
+        validate_scope(state, "appearance")
+        validate_scope(state, "箱体外观")
+        with self.assertRaises(AssertionError):
+            validate_scope(state, "internal_components")
+
     def test_direction_review_does_not_copy_previous_claim(self):
         messages = build_outlet_direction_verify_messages("original-image", "检查", "FIRST_MARKER", "REVIEW_MARKER", fixture())
         text = messages[0]["content"][1]["text"]
@@ -46,6 +54,7 @@ class UnifiedTests(unittest.TestCase):
         content = model.invoke.call_args.args[0][0]["content"]
         self.assertEqual(content[0]["image_url"]["url"], "original-image")
         self.assertIn("bboxNorm", content[1]["text"])
+        self.assertIn("无需转录铭牌", content[1]["text"])
         document = parse_report_document(report)
         self.assertEqual(document["verdict"], "not_assessed")
         self.assertEqual(render_report_document(document), report)
