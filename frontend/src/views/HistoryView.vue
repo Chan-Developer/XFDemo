@@ -243,7 +243,8 @@ const saveReportRevision = async (revisionPayload) => {
       const verdictLabels = {
         qualified: ui.compliant,
         unqualified: ui.nonCompliant,
-        unknown: ui.unknown
+        unknown: ui.unknown,
+        not_assessed: '未开展合规判定'
       }
       payload.value.records[index] = {
         ...current,

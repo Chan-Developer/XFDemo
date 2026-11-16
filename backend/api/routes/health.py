@@ -1,3 +1,5 @@
+import os
+
 from flask import Blueprint, jsonify
 
 from backend.config.settings import get_settings
@@ -20,6 +22,9 @@ def health():
             "missing": missing,
             "base_url": settings.base_url,
             "model": settings.model,
+            "release": os.getenv("APP_RELEASE", "legacy"),
+            "detector_mode": os.getenv("YOLO_MODE", "legacy"),
+            "judge_model": settings.judge_model,
             "enable_thinking": settings.enable_thinking,
             "database": "ready" if database_is_ready() else "unavailable",
         }

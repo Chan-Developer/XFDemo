@@ -52,12 +52,12 @@ const yoloDetections = computed(() => yoloResult.value?.detections || [])
 const yoloStatusText = computed(() => {
   if (!yoloResult.value) return ''
   if (!yoloResult.value.enabled) {
-    return `YOLO辅助检测未启用：${yoloResult.value.reason || '无详细信息'}`
+    return '组件定位暂不可用'
   }
   const count = yoloDetections.value.length
   return count
-    ? `YOLO辅助检测检出 ${count} 个内部组件候选框，已交给二次复核综合判断。`
-    : 'YOLO辅助检测未检出高于阈值的内部组件隐患框，但不代表没有隐患。'
+    ? `识别到 ${count} 个组件目标`
+    : '未获得可靠组件定位，不代表组件缺失。'
 })
 const formatConfidence = (value) => `${Math.round((Number(value) || 0) * 100)}%`
 const traceStages = computed(() => traceResult.value?.stages || [])
@@ -403,9 +403,9 @@ onBeforeUnmount(() => {
                 :text="result"
                 :revised="hasReportCorrection"
               />
-              <div v-if="false && yoloResult" class="inspect__yolo-card">
+              <div v-if="yoloResult" class="inspect__yolo-card">
                 <div class="inspect__yolo-head">
-                  <strong>YOLO 辅助检测</strong>
+                  <strong>组件识别</strong>
                   <span>{{ yoloStatusText }}</span>
                 </div>
                 <div v-if="yoloDetections.length" class="inspect__yolo-list">
@@ -413,7 +413,7 @@ onBeforeUnmount(() => {
                     v-for="item in yoloDetections"
                     :key="`${item.className}-${item.confidence}-${item.bbox?.join('-')}`"
                   >
-                    {{ item.label || item.className }} {{ formatConfidence(item.confidence) }}
+                    {{ item.className || item.label }} {{ formatConfidence(item.confidence) }}
                   </span>
                 </div>
               </div>
@@ -507,6 +507,34 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.inspect__yolo-card {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+.inspect__yolo-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.inspect__yolo-head span {
+  color: #737373;
+  font-size: 12px;
+}
+.inspect__yolo-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 8px 20px;
+  color: #525252;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 .inspect {
   padding: 104px 0 40px;
   min-height: 100vh;

@@ -163,6 +163,8 @@ def append_history(data, response, usage=None, finish_reason="", task="", yolo=N
     trace_final = ((trace or {}).get("summary") or {}).get("final") or {}
     if not parsed.get("scope") and trace_final.get("scope"):
         parsed["scope"] = trace_final.get("scope")
+    if not parsed.get("scope") and (trace or {}).get("detectionOnly"):
+        parsed["scope"] = (trace or {}).get("inspectionName", "组件识别")
     if not parsed.get("verdict") and trace_final.get("verdict"):
         parsed["verdict"] = trace_final.get("verdict")
     if not parsed.get("labels") and trace_final.get("labels"):

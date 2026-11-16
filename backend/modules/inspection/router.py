@@ -137,6 +137,12 @@ def resolve_yolo_route(
     probes: list[dict[str, Any]] = []
     if os.getenv("YOLO_MODE", "legacy") == "unified" and image:
         raw = run_yolo_detection(image, task="unified")
+        if not raw.get("enabled") or raw.get("reason"):
+            raise RuntimeError("组件识别服务不可用，请稍后重试：" + str(raw.get("reason") or "未启用"))
+        raw["detectorMode"] = "unified"
+        raw["modelType"] = "unified_components"
+        raw["modelScope"] = "组件识别"
+        raw["classesFile"] = "model.names"
         # Use image-only VLM confirmation rather than uncalibrated cross-class scores.
         for task, branch, _, _ in ROUTE_ORDER:
             projected = project_result(raw, task)

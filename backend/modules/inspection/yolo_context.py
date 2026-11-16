@@ -21,7 +21,7 @@ MISSING_EQUIPMENT_LABELS = {
 YOLO_COMPONENT_TO_DEFECT_HINTS = {
     "\u624b\u8f6e": ["\u5ba4\u5185\u6d88\u706b\u6813\u624b\u8f6e\u7f3a\u5931"],
     "\u63a5\u53e3": ["\u5ba4\u5185\u6d88\u706b\u6813\u6d88\u9632\u63a5\u53e3\u7f3a\u5931"],
-    "\u6813\u4f53": ["\u5ba4\u5185\u6d88\u706b\u6813\u65e0\u7bb1\u4f53"],
+    "消火栓": ["室内消火栓无箱体"],
     "\u6c34\u5e26": ["\u5ba4\u5185\u6d88\u706b\u6813\u65e0\u6d88\u9632\u6c34\u5e26"],
     "\u6c34\u67aa": ["\u5ba4\u5185\u6d88\u706b\u6813\u65e0\u6d88\u9632\u6c34\u67aa"],
     "\u9600\u95e8": ["\u5ba4\u5185\u6d88\u706b\u6813\u624b\u8f6e\u7f3a\u5931"],
@@ -89,7 +89,7 @@ def strong_yolo_detections(yolo_result: dict[str, Any] | None) -> list[dict[str,
 
 
 YOLO_COMPONENT_MISSING_DEFECTS = {
-    "栓体": "室内消火栓无箱体",
+    "消火栓": "室内消火栓无箱体",
     "水带": "室内消火栓无消防水带",
     "水枪": "室内消火栓无消防水枪",
 }
@@ -110,7 +110,7 @@ def yolo_presence_veto_labels(final_labels: list[str], yolo_result: dict[str, An
 
 
 DEFECT_VISIBLE_COMPONENT_TEXT = {
-    "室内消火栓无箱体": "栓体",
+    "室内消火栓无箱体": "箱体",
     "室内消火栓无消防水带": "消防水带",
     "室内消火栓无消防水枪": "消防水枪",
 }

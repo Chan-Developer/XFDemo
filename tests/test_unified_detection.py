@@ -5,19 +5,65 @@ from unittest.mock import patch
 from backend.infrastructure.vision.unified import canonical_name, project_result
 from backend.modules.inspection.router import resolve_yolo_route
 from backend.modules.inspection.pipeline import _probe_for_intent
-from backend.modules.inspection.messages import build_messages
+from backend.modules.inspection.messages import build_messages, build_outlet_direction_verify_messages
+from backend.modules.inspection.intent import parse_intent_output, DETECTION_ONLY_TYPES
+from backend.modules.inspection.yolo_context import yolo_presence_veto_labels
+from backend.modules.history.report_document import parse_report_document, render_report_document
+from backend.modules.inspection.component_report import describe_components
+from types import SimpleNamespace
 
 
 def fixture():
     names = ["室内消火栓/消防水枪", "室内消火栓/消火栓箱门", "室外消火栓/消火栓栓体",
              "灭火器/瓶体", "灭火器/压力指示器", "防火门/门扇"]
-    return {"enabled": True, "detections": [
+    return {"enabled": True, "detectorMode": "unified", "detections": [
         {"className": name, "classId": i, "confidence": 0.8,
          "bbox": [1, 2, 30, 40], "bboxNorm": [0.01, 0.02, 0.3, 0.4]}
         for i, name in enumerate(names)]}
 
 
 class UnifiedTests(unittest.TestCase):
+    def test_direction_review_does_not_copy_previous_claim(self):
+        messages = build_outlet_direction_verify_messages("original-image", "检查", "FIRST_MARKER", "REVIEW_MARKER", fixture())
+        text = messages[0]["content"][1]["text"]
+        self.assertNotIn("FIRST_MARKER", text)
+        self.assertNotIn("REVIEW_MARKER", text)
+
+    def test_recognition_report_keeps_status_and_uses_image_and_boxes(self):
+        from unittest.mock import Mock
+        model = Mock()
+        model.invoke.return_value = SimpleNamespace(content="画面中可见门扇和上方闭门器。", usage={})
+        report, _ = describe_components(model, "original-image", "防火门", fixture())
+        content = model.invoke.call_args.args[0][0]["content"]
+        self.assertEqual(content[0]["image_url"]["url"], "original-image")
+        self.assertIn("bboxNorm", content[1]["text"])
+        document = parse_report_document(report)
+        self.assertEqual(document["verdict"], "not_assessed")
+        self.assertEqual(render_report_document(document), report)
+
+    def test_valve_body_does_not_prove_cabinet_presence(self):
+        missing = ["室内消火栓无箱体"]
+        result = {"detections": [{"component": "栓体", "confidence": 0.9}]}
+        self.assertEqual(yolo_presence_veto_labels(missing, result)[0], missing)
+        result["detections"][0]["component"] = "消火栓"
+        self.assertEqual(yolo_presence_veto_labels(missing, result)[0], [])
+
+    def test_new_facilities_are_recognized_only_in_unified_mode(self):
+        import json
+        for branch in DETECTION_ONLY_TYPES:
+            output = json.dumps({"inspection_type": branch, "confidence": 0.9})
+            with patch.dict(os.environ, {"YOLO_MODE": "unified"}):
+                self.assertEqual(parse_intent_output(output).inspection_type, branch)
+            with patch.dict(os.environ, {"YOLO_MODE": "legacy"}):
+                self.assertEqual(parse_intent_output(output).inspection_type, "unknown")
+
+    def test_detector_failure_is_not_an_empty_success(self):
+        with patch.dict(os.environ, {"YOLO_MODE": "unified"}), patch(
+            "backend.modules.inspection.router.run_yolo_detection", return_value={"enabled": False, "reason": "missing weight"}
+        ):
+            with self.assertRaises(RuntimeError):
+                resolve_yolo_route("image")
+
     def test_name_not_index(self):
         self.assertEqual(canonical_name("室内消火栓/室内消火栓使用说明"), "操作说明")
         self.assertEqual(canonical_name("室内消火栓/消火栓手轮"), "手轮")
@@ -50,7 +96,7 @@ class UnifiedTests(unittest.TestCase):
 
     def test_empty_detections_do_not_default_to_indoor(self):
         with patch.dict(os.environ, {"YOLO_MODE": "unified"}), patch(
-            "backend.modules.inspection.router.run_yolo_detection", return_value={"detections": []}
+            "backend.modules.inspection.router.run_yolo_detection", return_value={"enabled": True, "detections": []}
         ):
             intent, _, _ = resolve_yolo_route("image")
             self.assertEqual(intent.inspection_type, "unknown")

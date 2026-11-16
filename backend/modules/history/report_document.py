@@ -11,6 +11,7 @@ VERDICT_LABELS = {
     "qualified": "合格",
     "unqualified": "不合格",
     "unknown": "无法判断",
+    "not_assessed": "未开展合规判定",
 }
 VERDICT_CODES = {label: code for code, label in VERDICT_LABELS.items()}
 FIELD_LABELS = {
@@ -78,7 +79,7 @@ def normalize_report_document(document: dict[str, Any] | None) -> dict[str, Any]
     if verdict in VERDICT_CODES:
         verdict = VERDICT_CODES[verdict]
     if verdict not in VERDICT_LABELS:
-        raise ValueError("检测结论必须为合格、不合格或无法判断")
+        raise ValueError("检测结论必须为合格、不合格、无法判断或未开展合规判定")
 
     normalized = {
         "schemaVersion": SCHEMA_VERSION,

@@ -4,6 +4,8 @@ from typing import Any, Callable
 from backend.infrastructure.ai.model_client import create_model_client
 from backend.infrastructure.vision.yolo_detector import run_yolo_detection
 from backend.infrastructure.vision.unified import project_result
+from backend.modules.inspection.intent import DETECTION_ONLY_TYPES
+from backend.modules.inspection.component_report import describe_components
 from backend.modules.inspection.messages import (
     apply_bend_review,
     apply_missing_equipment_visibility_review,
@@ -44,7 +46,7 @@ from backend.modules.inspection.yolo_context import apply_yolo_backstop, missing
 ProgressCallback = Callable[[dict[str, Any]], None]
 
 UNKNOWN_REPORT = """一、检测结论：无法判断
-当前图片未能可靠确认检测对象属于室内消火栓、室外消火栓或灭火器，请补充主体完整、清晰且无遮挡的现场图片后重新检测。
+当前图片未能可靠确认消防设施主体类型，请补充主体完整、清晰且无遮挡的现场图片后重新检测。
 
 二、涉及法律法规
 该功能建设中
@@ -189,6 +191,24 @@ class InspectionAgent:
             ))
             if reviewed_intent.inspection_type != "unknown":
                 intent = reviewed_intent
+                if intent.inspection_type in DETECTION_ONLY_TYPES:
+                    raw = route_meta["unifiedResult"]
+                    emit_progress(progress_callback, stage="route_review", status="complete", label=f"已确认{intent.display_name}")
+                    emit_progress(progress_callback, stage="analysis", status="running", label="正在核对可见组件")
+                    description_started = time.perf_counter()
+                    report, description_usage = describe_components(self.model, image, intent.display_name, raw)
+                    usage = {key: route_review_usage.get(key, 0) + description_usage.get(key, 0)
+                             for key in set(route_review_usage) | set(description_usage)}
+                    stages.append(trace_stage("component_description", "组件观察描述", description_started,
+                                              usage=description_usage, output=report))
+                    emit_progress(progress_callback, stage="analysis", status="complete", label="组件核对完成")
+                    return {**prepared, "inspection_type": intent.inspection_type,
+                            "inspection_name": intent.display_name, "task": "detection_only",
+                            "raw_report": report, "structured_report": report, "report": report,
+                            "usage": usage, "yolo": raw,
+                            "trace": {"version": "unified-64-v1", "inspectionType": intent.inspection_type,
+                                      "inspectionName": intent.display_name, "stages": stages,
+                                      "detectionOnly": True, "weights": raw.get("weights")}}
                 yolo_result, reviewed_task = _probe_for_intent(
                     route_meta,
                     intent.inspection_type,
@@ -236,7 +256,7 @@ class InspectionAgent:
                     "structured_report": UNKNOWN_REPORT,
                     "report": UNKNOWN_REPORT,
                     "usage": route_review_usage,
-                    "yolo": yolo_result,
+                    "yolo": route_meta.get("unifiedResult", yolo_result),
                     "trace": trace,
                 }
 
@@ -346,7 +366,7 @@ class InspectionAgent:
         # still decides appearance vs. internal components from the first VLM
         # report and reruns the matching detector when needed.
         if image and branch.key == "indoor_hydrant":
-            judge_task = detect_task("", requested_task, raw_report)
+            judge_task = route_task if "unifiedResult" in route_meta else detect_task("", requested_task, raw_report)
             if judge_task == "auto":
                 judge_task = "internal_components" if "内部" in raw_report else "appearance"
             expected_scope = expected_scope_for_branch(branch.key, judge_task)
@@ -634,7 +654,7 @@ class InspectionAgent:
             "structured_report": final_report,
             "report": public_report,
             "usage": usage,
-            "yolo": yolo_result,
+            "yolo": route_meta.get("unifiedResult", yolo_result),
             "trace": trace,
         }
 

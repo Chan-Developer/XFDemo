@@ -19,7 +19,8 @@ const props = defineProps({
 const verdictLabels = {
   qualified: '合格',
   unqualified: '不合格',
-  unknown: '无法判断'
+  unknown: '无法判断',
+  not_assessed: '未开展合规判定'
 }
 
 const parseText = (text) => {

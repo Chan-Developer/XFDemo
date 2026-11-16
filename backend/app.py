@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from flask import Flask
 
+from backend.config.settings import env_int, load_env
+
+# Vision modules read process settings on import; load deployment values first.
+load_env()
+
 from backend.api.auth_guard import register_auth_guard
 from backend.api.routes.auth import auth_bp
 from backend.api.routes.dataset import dataset_bp
@@ -10,7 +15,6 @@ from backend.api.routes.history import history_bp
 from backend.api.routes.inspection import inspection_bp
 from backend.api.routes.monitor import monitor_bp
 from backend.api.routes.pipes import pipes_bp
-from backend.config.settings import env_int
 from backend.infrastructure.database.postgres import init_database
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from dataclasses import asdict, dataclass
@@ -14,6 +15,13 @@ INSPECTION_TYPES = {
     "outdoor_hydrant": "室外消火栓",
     "fire_extinguisher": "灭火器",
     "unknown": "无法判断",
+}
+
+DETECTION_ONLY_TYPES = {
+    "water_pump_connector": "水泵接合器", "water_supply": "消防供水设施",
+    "wet_alarm_valve": "湿式报警阀组", "fire_detector": "火灾探测器",
+    "fire_alarm_controller": "火灾报警控制器", "sprinkler": "洒水喷头",
+    "evacuation_passage": "疏散通道", "fire_door": "防火门",
 }
 
 
@@ -49,7 +57,7 @@ class IntentResult:
 
     @property
     def display_name(self) -> str:
-        return INSPECTION_TYPES.get(self.inspection_type, self.inspection_type)
+        return {**INSPECTION_TYPES, **DETECTION_ONLY_TYPES}.get(self.inspection_type, self.inspection_type)
 
 
 def explicit_intent(value: str | None) -> IntentResult | None:
@@ -82,7 +90,23 @@ def explicit_intent(value: str | None) -> IntentResult | None:
 
 def build_intent_messages(query: str, image: str | None) -> list[dict[str, Any]]:
     _ = query
-    parts: list[dict[str, Any]] = [{"type": "text", "text": INTENT_PROMPT}]
+    prompt = INTENT_PROMPT
+    if os.getenv("YOLO_MODE", "legacy") == "unified":
+        prompt = (
+            "你是消防检查图片分类器。只根据原始图片判断主体设施或通道场景，不做合规判断。\n"
+            "合法inspection_type与含义：" + json.dumps({**INSPECTION_TYPES, **DETECTION_ONLY_TYPES}, ensure_ascii=False)
+            + "\n分类要求：室内消火栓是箱式消火栓及其内部部件，不以拍摄地点在室内外区分；"
+            "室外消火栓是地上或地下室外式栓体；灭火器是便携或推车灭火器。"
+            "evacuation_passage适用于楼梯、走廊、通道场景，包括被杂物占用的通道，"
+            "不要求图中有独立消防设备；不得因只有通道而返回unknown。"
+            "water_supply是消防泵、供水管路等设施，wet_alarm_valve是湿式报警阀及其附属仪表阀件。"
+            "透明箱门关闭仍是appearance，打开才是internal_components，不因看见内部组件改变开闭状态。"
+            "多种主体无法确定或无关图片返回unknown，不要强行归入消火栓或灭火器。\n"
+            '只输出JSON：{"inspection_type":"上述合法值", "confidence":0.0, '
+            '"scope_hint":"internal_components|appearance|outdoor|extinguisher|detection_only|unknown", '
+            '"evidence":"一句话说明实际可见主体"}'
+        )
+    parts: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     if image:
         parts.insert(0, {"type": "image_url", "image_url": {"url": image}})
     return [{"role": "user", "content": parts}]
@@ -103,7 +127,8 @@ def parse_intent_output(text: str) -> IntentResult | None:
     except Exception:
         return None
     inspection_type = str(data.get("inspection_type") or "unknown").strip()
-    if inspection_type not in INSPECTION_TYPES:
+    allowed = {**INSPECTION_TYPES, **DETECTION_ONLY_TYPES} if os.getenv("YOLO_MODE", "legacy") == "unified" else INSPECTION_TYPES
+    if inspection_type not in allowed:
         inspection_type = "unknown"
     try:
         confidence = float(data.get("confidence") or 0)

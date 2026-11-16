@@ -531,9 +531,17 @@ def build_outlet_direction_verify_messages(
         OUTLET_DIRECTION_VERIFY_PROMPT
         + "\n固定检测任务：" + query
         + "\n当前 YOLO 组件线索：" + format_yolo_for_prompt(yolo_result)
-        + "\n首轮报告：\n" + first_report
-        + "\n当前待复核报告：\n" + current_report
     )
+    if (yolo_result or {}).get("detectorMode") == "unified":
+        # Independent geometry review must not copy an earlier directional claim.
+        prompt += (
+            "\n独立观察要求：先定位与竖向供水管相连的栓体出水口，不要把水带两端接口当成栓口。"
+            "接口位于箱体左侧不等于朝左；水带或水枪的位置也不能证明栓口方向。"
+            "只有实际看清横向短管和其侧向出口才能判左右朝向，禁止想象被遮挡的短管。"
+            "若正面开口朝箱门外、栓体在开口后方且没有沿背板横向延伸的证据，不支持方向错误。"
+        )
+    else:
+        prompt += "\n首轮报告：\n" + first_report + "\n当前待复核报告：\n" + current_report
     return [{"role": "user", "content": [
         {"type": "image_url", "image_url": {"url": image}},
         {"type": "text", "text": prompt},
