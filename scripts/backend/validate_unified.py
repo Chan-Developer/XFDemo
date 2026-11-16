@@ -46,7 +46,9 @@ def validate_public(base_url):
             payload = {'query': '检查图片中的消防设施', 'image': 'data:image/jpeg;base64,' +
                        base64.b64encode(Path(sample['image']).read_bytes()).decode()}
             started = time.monotonic()
-            with session.post(base_url + '/api/chat/stream', json=payload, stream=True, timeout=(15, 600)) as response:
+            # Requests also uses this socket timeout while sending the image body.
+            # Full-resolution uploads over a relay can exceed a short connect budget.
+            with session.post(base_url + '/api/chat/stream', json=payload, stream=True, timeout=(120, 600)) as response:
                 response.raise_for_status()
                 events = [json.loads(line) for line in response.iter_lines() if line]
             errors = [event for event in events if event.get('type') == 'error']
@@ -69,6 +71,7 @@ def validate_public(base_url):
                 assert record['modelReportDocument']['verdict'] == 'not_assessed'
             rows.append({'branch': branch, 'passed': True, 'seconds': round(time.monotonic() - started, 2),
                          'report': done['response'], 'historyId': record['id'], 'imageEndpoints': 'passed'})
+            Path(os.environ['VALIDATION_OUTPUT']).write_text(json.dumps(rows, ensure_ascii=False, indent=2))
             print(json.dumps(rows[-1], ensure_ascii=False), flush=True)
         Path(os.environ['VALIDATION_OUTPUT']).write_text(json.dumps(rows, ensure_ascii=False, indent=2))
     finally:
