@@ -39,6 +39,8 @@ def build_messages(
             "type": "text",
             "text": f"{AUTO_PROMPT}\n固定检测任务：{query}",
         }]
+        if yolo_result and yolo_result.get("detectorMode") == "unified":
+            content_parts[0]["text"] += "\n" + format_yolo_for_prompt(yolo_result)
         if image:
             content_parts.insert(0, {"type": "image_url", "image_url": {"url": image}})
         return [{"role": "user", "content": content_parts}]

@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from backend.infrastructure.vision.yolo_detector import run_yolo_detection
 from backend.modules.inspection.intent import IntentResult
+from backend.infrastructure.vision.unified import project_result
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -134,6 +135,19 @@ def resolve_yolo_route(
 ) -> tuple[IntentResult, dict[str, Any], dict[str, Any]]:
     started = time.perf_counter()
     probes: list[dict[str, Any]] = []
+    if os.getenv("YOLO_MODE", "legacy") == "unified" and image:
+        raw = run_yolo_detection(image, task="unified")
+        # Use image-only VLM confirmation rather than uncalibrated cross-class scores.
+        for task, branch, _, _ in ROUTE_ORDER:
+            projected = project_result(raw, task)
+            probes.append({"task": task, "inspectionType": branch, "matched": False,
+                           "score": 0.0, "result": projected, "reason": "等待原图确认设施",
+                           "labels": projected["classes"], "detectionCount": len(projected["detections"]),
+                           "durationMs": 0})
+        return _unknown_intent("统一组件定位完成，按原图确认设施", "unified_yolo"), raw, {
+            "source": "unified_yolo", "unifiedResult": raw, "probes": probes,
+            "latencyMs": int((time.perf_counter() - started) * 1000),
+            "selectedTask": "", "selectedReason": "等待原图确认设施"}
 
     # The product only uploads an image. Keep these arguments for API
     # compatibility, but never let fixed request text or a fixed task choose

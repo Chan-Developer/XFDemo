@@ -3,6 +3,7 @@ from typing import Any, Callable
 
 from backend.infrastructure.ai.model_client import create_model_client
 from backend.infrastructure.vision.yolo_detector import run_yolo_detection
+from backend.infrastructure.vision.unified import project_result
 from backend.modules.inspection.messages import (
     apply_bend_review,
     apply_missing_equipment_visibility_review,
@@ -353,7 +354,11 @@ class InspectionAgent:
             current_type = str(yolo_result.get("modelType") or "")
             if current_type != desired_type:
                 stage_started = time.perf_counter()
-                aligned_result = run_yolo_detection(image, task=judge_task)
+                aligned_result = (
+                    project_result(route_meta["unifiedResult"], judge_task)
+                    if "unifiedResult" in route_meta
+                    else run_yolo_detection(image, task=judge_task)
+                )
                 stages.append(trace_stage(
                     "yolo_appearance_align" if judge_task == "appearance" else "yolo_internal_align",
                     "YOLO 范围对齐复跑（箱体外观）" if judge_task == "appearance" else "YOLO 范围对齐复跑（内部组件）",

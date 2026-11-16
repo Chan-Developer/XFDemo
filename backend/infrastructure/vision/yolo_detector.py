@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+from backend.infrastructure.vision.unified import canonical_name
 
 from backend.config.paths import PROJECT_ROOT, YOLO_OUTPUT_ROOT, YOLO_TMP_DIR
 YOLO_PYTHON = Path(os.getenv("YOLO_PYTHON", "/home/user/miniforge3/envs/yolo_clj/bin/python")).resolve()
@@ -60,6 +61,8 @@ def _is_appearance_task(task: str) -> bool:
 
 def _normalize_model_task(task: str) -> str:
     normalized = (task or "auto").strip().lower()
+    if normalized == "unified":
+        return "unified"
     if normalized in {"outdoor", "outdoor_hydrant", "室外消火栓"}:
         return "outdoor_hydrant"
     if normalized in {"fire_extinguisher", "extinguisher", "灭火器"}:
@@ -71,6 +74,8 @@ def _normalize_model_task(task: str) -> str:
 
 def _class_labels_for_task(task: str) -> dict[str, str]:
     model_task = _normalize_model_task(task)
+    if model_task == "unified":
+        return {}
     if model_task == "appearance":
         return APPEARANCE_CLASS_LABELS
     if model_task == "outdoor_hydrant":
@@ -82,6 +87,8 @@ def _class_labels_for_task(task: str) -> dict[str, str]:
 
 def _weights_for_task(task: str) -> Path:
     model_task = _normalize_model_task(task)
+    if model_task == "unified":
+        return Path(os.environ["YOLO_UNIFIED_WEIGHTS"])
     if model_task == "appearance":
         return APPEARANCE_WEIGHTS
     if model_task == "outdoor_hydrant":
@@ -330,7 +337,7 @@ def run_yolo_detection(image: str | None, task: str = "auto") -> dict[str, Any]:
                 "--weights", str(weights),
                 "--image", str(temp_image),
                 "--conf", str(DEFAULT_CONF),
-                "--imgsz", str(DEFAULT_IMGSZ),
+                "--imgsz", str(int(os.getenv("YOLO_UNIFIED_IMGSZ", "1280")) if model_task == "unified" else DEFAULT_IMGSZ),
                 "--device", device,
             ]
             try:
@@ -350,7 +357,8 @@ def run_yolo_detection(image: str | None, task: str = "auto") -> dict[str, Any]:
             for item in payload.get("detections") or []:
                 class_name = str(item.get("className", ""))
                 class_id = str(item.get("classId", ""))
-                label = class_labels.get(class_name) or class_labels.get(class_id) or class_name
+                # Internal checkpoint IDs changed between releases. Names are authoritative.
+                label = canonical_name(class_name) if model_task in {"internal_components", "unified"} else (class_labels.get(class_name) or class_labels.get(class_id) or class_name)
                 detections.append({
                     **item,
                     "label": label,
@@ -371,7 +379,7 @@ def run_yolo_detection(image: str | None, task: str = "auto") -> dict[str, Any]:
                 "attemptedDevices": attempted_devices,
                 "imageWidth": payload.get("imageWidth", 0),
                 "imageHeight": payload.get("imageHeight", 0),
-                "detections": suppress_overlapping_detections(detections),
+                "detections": detections if model_task == "unified" else suppress_overlapping_detections(detections),
                 "rawDetectionCount": len(detections),
                 "reason": "",
             }
@@ -397,6 +405,12 @@ def run_yolo_detection(image: str | None, task: str = "auto") -> dict[str, Any]:
 
 def format_yolo_for_prompt(result: dict[str, Any] | None) -> str:
     result = result or _empty_result(False, "no yolo result")
+    if result.get("detectorMode") == "unified":
+        return (
+            "组件定位线索（不是合规结论）：\n"
+            + json.dumps(result.get("detections", []), ensure_ascii=False)
+            + "\n必须结合原图判断。未检出不代表缺失，检出不代表正常。不要在报告中解释模型或检测内部过程。"
+        )
     model_type = result.get("modelType") or "component_presence"
     if model_type == "appearance_presence":
         header = "YOLO辅助检测模型：箱体外观目标检测模型（检测中文标识、把手、操作说明、消火栓、箱门、英文标识、装饰性箱门、铭牌）。"
