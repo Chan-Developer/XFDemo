@@ -144,7 +144,7 @@ def build_intent_messages(query: str, image: str | None, detections: dict | None
 
 
 def parse_intent_output(text: str) -> IntentResult | None:
-    raw = trim_output(strip_reasoning(text or ""), 1200).strip()
+    raw = trim_output(strip_reasoning(text or ""), 8000).strip()
     if not raw:
         return None
     candidate = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -200,7 +200,8 @@ def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str
         grounded = not requires_grounding or (
             grounding.get("identity_status") == "confirmed"
             and normalized_box(grounding.get("evidence_bbox")) is not None
-            and bool(str(grounding.get("distinguishing_evidence") or "").strip())
+            and isinstance(grounding.get("distinguishing_evidence"), str)
+            and bool(grounding["distinguishing_evidence"].strip())
             and bool(parsed and parsed.evidence.strip())
         )
         latency_ms = int((time.perf_counter() - started) * 1000)

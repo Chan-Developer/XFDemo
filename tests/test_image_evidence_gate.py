@@ -68,7 +68,9 @@ def test_pressure_requires_readable_original_pixels_even_for_normal_verdict():
     data = review(obs=[observation(kind="reading", text="表盘指针位于绿色区域", readable=True,
                                   bbox=[0.1, 0.1, 0.12, 0.12])],
                   checks=[check(PRESSURE, state="refuted", readable=True)])
-    assert validate_evidence(data, [PRESSURE], {"imageWidth": 1000, "imageHeight": 1000})["verdict"] == "无法判断"
+    rejected = validate_evidence(data, [PRESSURE], {"imageWidth": 1000, "imageHeight": 1000})
+    assert rejected["verdict"] == "无法判断"
+    assert "指针位于绿色" not in render_evidence(rejected, "灭火器")[1]
     data["observations"][0]["bbox"] = [0.1, 0.1, 0.5, 0.5]
     assert validate_evidence(data, [PRESSURE], {"imageWidth": 1000, "imageHeight": 1000})["verdict"] == "合规"
 

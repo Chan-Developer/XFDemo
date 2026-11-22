@@ -6,7 +6,6 @@ from backend.infrastructure.ai.model_client import create_model_client
 from backend.infrastructure.vision.yolo_detector import run_yolo_detection
 from backend.infrastructure.vision.unified import project_result
 from backend.modules.inspection.intent import DETECTION_ONLY_TYPES
-from backend.modules.inspection.component_report import describe_components
 from backend.modules.inspection.evidence_gate import review_image_evidence
 from backend.modules.inspection.messages import (
     apply_bend_review,
@@ -33,7 +32,6 @@ from backend.modules.inspection.parser import (
     report_fields_for_trace,
     sanitize_final_report,
 )
-from backend.modules.inspection.output_formatter import format_public_report
 from backend.modules.inspection.postprocess import enforce_report_scope, guarded_format_judge_json
 from backend.config.settings import get_settings
 from backend.modules.inspection.trace import build_trace_summary, trace_stage

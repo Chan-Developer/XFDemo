@@ -45,6 +45,13 @@ def validate_evidence(data: Any, allowed: list[str], detections: dict) -> dict:
             reason = "unmeasured_distance"
         elif row.get("kind") == "reading" and row.get("readable") is not True:
             reason = "unreadable_detail"
+        elif row.get("kind") == "reading" and re.search(r"指针|压力|绿色区|红色区|黄色区", text) and not (
+            (box[2] - box[0]) * detections.get("imageWidth", 0) >= 32
+            and (box[3] - box[1]) * detections.get("imageHeight", 0) >= 32
+        ):
+            reason = "insufficient_original_reading_pixels"
+        elif "缺失" in text and row.get("kind") != "absence":
+            reason = "absence_requires_complete_view"
         elif row.get("kind") == "absence" and row.get("coverage_complete") is not True:
             reason = "incomplete_view_cannot_prove_absence"
         if key in seen:
