@@ -12,6 +12,7 @@ from backend.infrastructure.vision.unified import project_result
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
+# 路由顺序
 ROUTE_ORDER = (
     ("internal_components", "indoor_hydrant", "internal_components", "识别室内消火栓组件"),
     ("appearance", "indoor_hydrant", "appearance", "识别室内消火栓箱体"),

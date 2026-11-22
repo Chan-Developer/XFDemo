@@ -160,7 +160,7 @@ class InspectionAgent:
             label="检测任务已准备",
             elapsedMs=int((time.perf_counter() - pipeline_started) * 1000),
         )
-
+        # 做路由
         intent, yolo_result, route_meta = resolve_yolo_route(
             image,
             progress_callback=progress_callback,
