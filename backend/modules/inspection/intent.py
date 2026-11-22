@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -8,6 +9,8 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from backend.modules.inspection.utils import strip_reasoning, trim_output
+from backend.modules.inspection.image_evidence import image_review_content, normalized_box
+from backend.modules.inspection.parser import extract_json_object
 
 
 INSPECTION_TYPES = {
@@ -88,7 +91,7 @@ def explicit_intent(value: str | None) -> IntentResult | None:
     return IntentResult(mapped, 1.0, scope, "用户显式指定检测类型", "explicit")
 
 
-def build_intent_messages(query: str, image: str | None) -> list[dict[str, Any]]:
+def build_intent_messages(query: str, image: str | None, detections: dict | None = None) -> list[dict[str, Any]]:
     _ = query
     prompt = INTENT_PROMPT
     if os.getenv("YOLO_MODE", "legacy") == "unified":
@@ -105,6 +108,13 @@ def build_intent_messages(query: str, image: str | None) -> list[dict[str, Any]]
             "仔细阅读设备本身清晰可辨的名称标牌；与设备结构一致的‘水泵接合器’、"
             "‘喷淋水泵接合器’标识是water_pump_connector的直接类型证据。"
             "标牌不是合规必要条件，模糊文字不要猜读；无法区分接合器与消火栓时返回unknown。"
+            "特别核对：低位并列双接口、汇入同一主管及手轮组合通常是接合器候选，"
+            "不可仅因红色立柱套用室外消火栓类型；需结合整体结构确认。"
+            "water_supply还包括消防水泵控制柜和控制面板。清楚可见的‘1号泵/2号泵’、"
+            "‘启动/停止’、‘手动/自动’与泵控制结构组合是供水控制候选。"
+            "fire_alarm_controller需有报警主机身份依据（例如火警/故障/屏蔽分区与报警显示结构），"
+            "仅有红色柜体、按钮、指示灯不能证明它是火灾报警控制器。"
+            "探测器与照明灯必须按全图位置分别对应，不得把较大的吸顶灯当成小型探测器。"
             "主体选择：近景清晰拍摄的具体设备优先于背景环境；设备处于走廊、楼梯口或车库入口，"
             "不代表主体就是evacuation_passage。fire_door适用于以门扇、门框、闭门器为拍摄主体，"
             "且有防火门标识或其他清晰防火门证据的图片；门处于开启状态也不改变设备类别。"
@@ -117,6 +127,16 @@ def build_intent_messages(query: str, image: str | None) -> list[dict[str, Any]]
             '"scope_hint":"internal_components|appearance|outdoor|extinguisher|detection_only|unknown", '
             '"evidence":"一句话说明实际可见主体"}'
         )
+        prompt += (
+            '\n另外必须输出 identity_status（confirmed或uncertain）、evidence_bbox '
+            '（主体在原图中的[x1,y1,x2,y2]归一化坐标，不能使用裁剪图坐标），'
+            '以及 distinguishing_evidence（实际可见的区分依据）。'
+            '接合器/室外消火栓、泵控制柜/报警控制器必须说明为何排除另一类型；'
+            '不能区分则identity_status=uncertain并返回unknown。候选框标签只是提示，'
+            '请逐一与原图核对，可以否定候选，不以置信度高低直接决定类别。'
+        )
+    if image and detections is not None:
+        return [{"role": "user", "content": image_review_content(image, prompt, detections)}]
     parts: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     if image:
         parts.insert(0, {"type": "image_url", "image_url": {"url": image}})
@@ -137,6 +157,8 @@ def parse_intent_output(text: str) -> IntentResult | None:
         data = json.loads(candidate)
     except Exception:
         return None
+    if not isinstance(data, dict):
+        return None
     inspection_type = str(data.get("inspection_type") or "unknown").strip()
     allowed = {**INSPECTION_TYPES, **DETECTION_ONLY_TYPES} if os.getenv("YOLO_MODE", "legacy") == "unified" else INSPECTION_TYPES
     if inspection_type not in allowed:
@@ -144,6 +166,8 @@ def parse_intent_output(text: str) -> IntentResult | None:
     try:
         confidence = float(data.get("confidence") or 0)
     except Exception:
+        confidence = 0.0
+    if not math.isfinite(confidence):
         confidence = 0.0
     scope_hint = str(data.get("scope_hint") or "unknown").strip()
     evidence = str(data.get("evidence") or "").strip()
@@ -161,22 +185,34 @@ def rule_based_intent(query: str, explicit_task: str | None = None) -> IntentRes
     )
 
 
-def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str | None = None) -> tuple[IntentResult, dict[str, Any]]:
+def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str | None = None,
+                   detections: dict | None = None) -> tuple[IntentResult, dict[str, Any]]:
     explicit = explicit_intent(explicit_task)
     if explicit:
         return explicit, {"latencyMs": 0, "usage": {}, "error": ""}
 
     started = time.perf_counter()
     try:
-        response = model.invoke(build_intent_messages(query, image))
+        response = model.invoke(build_intent_messages(query, image, detections))
         parsed = parse_intent_output(response.content)
+        grounding = extract_json_object(response.content) or {}
+        requires_grounding = os.getenv("YOLO_MODE", "legacy") == "unified"
+        grounded = not requires_grounding or (
+            grounding.get("identity_status") == "confirmed"
+            and normalized_box(grounding.get("evidence_bbox")) is not None
+            and bool(str(grounding.get("distinguishing_evidence") or "").strip())
+            and bool(parsed and parsed.evidence.strip())
+        )
         latency_ms = int((time.perf_counter() - started) * 1000)
         if (
             parsed
             and parsed.inspection_type != "unknown"
             and parsed.confidence >= IMAGE_INTENT_MIN_CONFIDENCE
+            and grounded
         ):
-            return parsed, {"latencyMs": latency_ms, "usage": response.usage, "error": ""}
+            return parsed, {"latencyMs": latency_ms, "usage": response.usage, "error": "",
+                            "grounding": {"bbox": grounding.get("evidence_bbox"),
+                                          "distinguishingEvidence": grounding.get("distinguishing_evidence")}}
         unknown = IntentResult(
             "unknown",
             parsed.confidence if parsed else 0.0,
@@ -188,7 +224,7 @@ def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str
         return unknown, {
             "latencyMs": latency_ms,
             "usage": response.usage,
-            "error": "low_confidence_or_unknown",
+            "error": "missing_identity_evidence" if not grounded else "low_confidence_or_unknown",
             "rawOutput": trim_output(strip_reasoning(response.content), 800),
         }
     except Exception as exc:

@@ -1,4 +1,5 @@
 import time
+from dataclasses import replace
 from typing import Any, Callable
 
 from backend.infrastructure.ai.model_client import create_model_client
@@ -6,6 +7,7 @@ from backend.infrastructure.vision.yolo_detector import run_yolo_detection
 from backend.infrastructure.vision.unified import project_result
 from backend.modules.inspection.intent import DETECTION_ONLY_TYPES
 from backend.modules.inspection.component_report import describe_components
+from backend.modules.inspection.evidence_gate import review_image_evidence
 from backend.modules.inspection.messages import (
     apply_bend_review,
     apply_missing_equipment_visibility_review,
@@ -129,6 +131,13 @@ class InspectionAgent:
             base_url=settings.direction_review_base_url,
             model=settings.direction_review_model,
         )
+        self.evidence_model = create_model_client(
+            replace(settings, max_tokens=max(settings.max_tokens, 3072), temperature=0.0),
+            provider=settings.judge_provider,
+            api_key=settings.judge_api_key,
+            base_url=settings.judge_base_url,
+            model=settings.judge_model,
+        )
 
     def prepare(self, data: dict[str, Any]) -> InspectionState:
         return prepare_input({
@@ -175,7 +184,9 @@ class InspectionAgent:
                 detail="目标检测证据不足或存在冲突，正在根据原图确认主体设备",
             )
             stage_started = time.perf_counter()
-            reviewed_intent, review_meta = resolve_intent(self.judge_model, "", image)
+            reviewed_intent, review_meta = resolve_intent(
+                self.evidence_model, "", image, detections=route_meta.get("unifiedResult")
+            )
             route_review_usage = dict(review_meta.get("usage") or {})
             stages.append(trace_stage(
                 "image_type_review",
@@ -185,6 +196,7 @@ class InspectionAgent:
                 inspectionType=reviewed_intent.inspection_type,
                 confidence=reviewed_intent.confidence,
                 evidence=reviewed_intent.evidence,
+                grounding=review_meta.get("grounding", {}),
                 rawOutput=review_meta.get("rawOutput", ""),
                 error=review_meta.get("error", ""),
                 usage=route_review_usage,
@@ -196,17 +208,22 @@ class InspectionAgent:
                     emit_progress(progress_callback, stage="route_review", status="complete", label=f"已确认{intent.display_name}")
                     emit_progress(progress_callback, stage="analysis", status="running", label="正在核对可见组件")
                     description_started = time.perf_counter()
-                    report, description_usage = describe_components(self.model, image, intent.display_name, raw)
+                    structured, report, evidence_review, description_usage = review_image_evidence(
+                        self.evidence_model, image, intent.inspection_type, intent.display_name,
+                        "", raw, observation_only=True,
+                    )
                     usage = {key: route_review_usage.get(key, 0) + description_usage.get(key, 0)
                              for key in set(route_review_usage) | set(description_usage)}
                     stages.append(trace_stage("component_description", "组件观察描述", description_started,
-                                              usage=description_usage, output=report))
+                                              usage=description_usage, output=report,
+                                              status="warn" if evidence_review["error"] or not evidence_review["observations"] else "ok",
+                                              evidenceReview=evidence_review))
                     emit_progress(progress_callback, stage="analysis", status="complete", label="组件核对完成")
                     return {**prepared, "inspection_type": intent.inspection_type,
                             "inspection_name": intent.display_name, "task": "detection_only",
                             "raw_report": report, "structured_report": report, "report": report,
                             "usage": usage, "yolo": raw,
-                            "trace": {"version": "unified-64-v1", "inspectionType": intent.inspection_type,
+                            "trace": {"version": "image-evidence-v4", "inspectionType": intent.inspection_type,
                                       "inspectionName": intent.display_name, "stages": stages,
                                       "detectionOnly": True, "weights": raw.get("weights")}}
                 yolo_result, reviewed_task = _probe_for_intent(
@@ -228,6 +245,7 @@ class InspectionAgent:
                     elapsedMs=review_meta.get("latencyMs", 0),
                 )
             else:
+                intent = reviewed_intent
                 prepared["inspection_type"] = "unknown"
                 prepared["inspection_name"] = "无法判断"
                 prepared["intent"] = route_trace_payload(intent, route_meta)
@@ -630,14 +648,24 @@ class InspectionAgent:
         )
         final_report = apply_yolo_backstop(final_report, raw_report, yolo_result)
         final_report = enforce_report_scope(final_report, expected_scope)
+        stage_started = time.perf_counter()
+        final_report, public_report, evidence_review, evidence_usage = review_image_evidence(
+            self.evidence_model, image, branch.key, expected_scope,
+            final_report, route_meta.get("unifiedResult", yolo_result),
+        )
+        usage = merge_usage(usage, evidence_usage)
+        stages.append(trace_stage(
+            "image_evidence_gate", "最终图像证据核验", stage_started,
+            status="warn" if evidence_review["error"] or evidence_review["uncertain"] else "ok",
+            output=report_fields_for_trace(final_report), evidenceReview=evidence_review, usage=evidence_usage,
+        ))
         trace = {
-            "version": "image-only-router-branch-judge-v3",
+            "version": "image-evidence-v4",
             "inspectionType": intent.inspection_type,
             "inspectionName": branch.name,
             "stages": stages,
             "summary": build_trace_summary(raw_report, final_report, yolo_result, stages),
         }
-        public_report = format_public_report(final_report, yolo_result=yolo_result)
         emit_progress(
             progress_callback,
             stage="report",

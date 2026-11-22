@@ -257,18 +257,9 @@ def _evidence_is_useful(evidence: str) -> bool:
 
 def _compliant_text(scope: str, evidence: str = "", yolo_result: dict | None = None) -> str:
     evidence_text = _compact_evidence(evidence)
-    component_text = _visible_component_text(yolo_result) if "\u5185\u90e8" in scope else ""
     if _evidence_is_useful(evidence_text):
-        return component_text + evidence_text
-    if "\u5ba4\u5916\u6d88\u706b\u6813" in scope:
-        return "\u753b\u9762\u4e2d\u5ba4\u5916\u6d88\u706b\u6813\u4e3b\u4f53\u53ef\u786e\u8ba4\uff0c\u5468\u8fb9\u672a\u89c1\u660e\u663e\u906e\u6321\u3001\u5708\u5360\u3001\u7834\u635f\u3001\u9508\u8680\u6216\u6807\u8bc6\u4e0d\u53ef\u8fa8\u7b49\u5f02\u5e38\u3002"
-    if "\u706d\u706b\u5668" in scope:
-        return "\u753b\u9762\u4e2d\u706d\u706b\u5668\u53ca\u5173\u952e\u53ef\u89c1\u90e8\u4ef6\u72b6\u6001\u53ef\u786e\u8ba4\uff0c\u672a\u89c1\u7f3a\u5931\u3001\u53d6\u7528\u53d7\u9650\u3001\u74f6\u4f53\u660e\u663e\u7834\u635f\u6216\u538b\u529b\u6307\u793a\u5f02\u5e38\u3002"
-    if "\u5916\u89c2" in scope:
-        return _compliant_appearance_text()
-    if "\u5185\u90e8" in scope:
-        return component_text or _compliant_internal_text()
-    return _compliant_appearance_text() + "\n\n" + _compliant_internal_text()
+        return evidence_text
+    return "当前图片缺少可核验的观察依据，无法确认设施状态。"
 
 def _scope_issue_prefix(scope: str, labels: list[str]) -> str:
     appearance_labels, internal_labels = _split_labels(labels)
@@ -315,17 +306,7 @@ def _noncompliant_text(labels: list[str], evidence: str, scope: str) -> str:
         unsupported = _unsupported_evidence_labels(labels, evidence_text)
         if not unsupported:
             return _scope_issue_prefix(scope, labels) + evidence_text
-        supported = [label for label in labels if label not in unsupported]
-        fallback_parts = [
-            BRANCH_ISSUE_TEXT.get(label)
-            for label in unsupported
-        ]
-        fallback_parts = [item for item in fallback_parts if item]
-        if supported and fallback_parts:
-            return _scope_issue_prefix(scope, labels) + _join_sentences([evidence_text, *fallback_parts])
-        if fallback_parts:
-            return _scope_issue_prefix(scope, labels) + _join_sentences(fallback_parts)
-    return _fallback_issue_text(labels, scope)
+    return "当前图片缺少与异常标签对应的可见依据，需补拍后复核。"
 
 
 def _suggestions_text(labels: list[str], suggestions: list[str], verdict: str) -> str:
@@ -363,6 +344,8 @@ def format_public_report(structured_report: str, yolo_result: dict | None = None
             evidence = line.split("：", 1)[1].strip()
             break
 
+    if not _evidence_is_useful(evidence) or _unsupported_evidence_labels(labels, evidence):
+        verdict, labels, suggestions = "无法判断", [], []
     is_unknown = verdict == "无法判断"
     is_qualified = verdict == "合规" and not labels
     conclusion = "无法判断" if is_unknown else ("合格" if is_qualified else "不合格")
