@@ -195,6 +195,7 @@ class InspectionAgent:
                 confidence=reviewed_intent.confidence,
                 evidence=reviewed_intent.evidence,
                 grounding=review_meta.get("grounding", {}),
+                conflict=review_meta.get("conflict", {}),
                 rawOutput=review_meta.get("rawOutput", ""),
                 error=review_meta.get("error", ""),
                 usage=route_review_usage,

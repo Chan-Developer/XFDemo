@@ -3,11 +3,16 @@ import argparse
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import hashlib
 from pathlib import Path
 import subprocess
 import time
 
-from backend.config.settings import get_settings
+from backend.config.settings import get_settings, load_env
+
+# Detector paths and device defaults are evaluated at import time.
+load_env()
+
 from backend.infrastructure.vision.yolo_detector import run_yolo_detection
 from backend.modules.inspection.intent import resolve_intent
 from backend.modules.inspection.pipeline import InspectionAgent
@@ -40,6 +45,9 @@ def main():
     (output / "metadata.json").write_text(json.dumps({
         "source": args.source, "mode": args.mode, "ids": sorted(ids), "cwdCommit": commit,
         "codeRoot": str(Path(__file__).resolve().parents[2]),
+        "sourceHashes": {name: hashlib.sha256((Path(__file__).resolve().parents[2] /
+                          "backend/modules/inspection" / name).read_bytes()).hexdigest()
+                         for name in ("intent.py", "pipeline.py", "evidence_gate.py", "image_evidence.py")},
         "model": settings.model, "judgeModel": settings.judge_model,
         "method": "InspectionAgent replay; no production history writes; route/contract checks are not human accuracy",
     }, ensure_ascii=False, indent=2))
@@ -83,6 +91,10 @@ def main():
                "evidenceContracts": sum(row.get("evidenceContractPassed", False) for row in rows)}
     (output / "summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary), flush=True)
+    if summary["errors"] or summary["routeMatches"] != len(rows) or (
+        args.mode == "full" and summary["evidenceContracts"] != len(rows)
+    ):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from backend.modules.inspection.utils import strip_reasoning, trim_output
-from backend.modules.inspection.image_evidence import image_review_content, normalized_box
+from backend.modules.inspection.image_evidence import image_review_content, normalized_box, conflicting_facility_evidence
 from backend.modules.inspection.parser import extract_json_object
 
 
@@ -110,6 +110,8 @@ def build_intent_messages(query: str, image: str | None, detections: dict | None
             "标牌不是合规必要条件，模糊文字不要猜读；无法区分接合器与消火栓时返回unknown。"
             "特别核对：低位并列双接口、汇入同一主管及手轮组合通常是接合器候选，"
             "不可仅因红色立柱套用室外消火栓类型；需结合整体结构确认。"
+            "单立柱、侧面双口和顶部手轮也可能是接合器，不能因未见单独汇流主管而排除接合器；"
+            "接口被盖帽盖住时不能声称已经看清内部螺纹或断定接口制式。"
             "water_supply还包括消防水泵控制柜和控制面板。清楚可见的‘1号泵/2号泵’、"
             "‘启动/停止’、‘手动/自动’与泵控制结构组合是供水控制候选。"
             "fire_alarm_controller需有报警主机身份依据（例如火警/故障/屏蔽分区与报警显示结构），"
@@ -211,6 +213,44 @@ def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str
             and parsed.confidence >= IMAGE_INTENT_MIN_CONFIDENCE
             and grounded
         ):
+            competitor = conflicting_facility_evidence(parsed.inspection_type, grounding.get("evidence_bbox"), detections)
+            if competitor:
+                initial = parsed
+                messages = build_intent_messages("", image, detections)
+                messages[0]["content"].append({"type": "text", "text": (
+                    f"存在主体身份冲突：第一次判断为{initial.inspection_type}，但同一区域存在"
+                    f"{competitor}的成组组件候选。请重新看原图及局部，逐项核对两种身份。"
+                    "不得仅因为候选标签而改判，也不得重复第一次判断作为证据。"
+                    "单立柱、带盖侧接口、顶部手轮并不能单独排除水泵接合器；"
+                    "盖帽遮住接口时不得臆测螺纹形式。不能凭空猜读标牌。"
+                    "若确实支持候选类型，请给出可见区分依据及原图区域；否则返回unknown等待人工确认。"
+                    "仍使用前述JSON结构。"
+                )})
+                second = model.invoke(messages)
+                resolved = parse_intent_output(second.content)
+                second_grounding = extract_json_object(second.content) or {}
+                combined_usage = dict(response.usage or {})
+                for key, value in (second.usage or {}).items():
+                    if isinstance(value, int):
+                        combined_usage[key] = combined_usage.get(key, 0) + value
+                resolved_ok = (
+                    resolved and resolved.inspection_type == competitor
+                    and resolved.confidence >= IMAGE_INTENT_MIN_CONFIDENCE
+                    and resolved.evidence.strip()
+                    and second_grounding.get("identity_status") == "confirmed"
+                    and normalized_box(second_grounding.get("evidence_bbox")) is not None
+                    and isinstance(second_grounding.get("distinguishing_evidence"), str)
+                    and second_grounding["distinguishing_evidence"].strip()
+                )
+                meta = {"latencyMs": int((time.perf_counter() - started) * 1000), "usage": combined_usage,
+                        "error": "" if resolved_ok else "unresolved_facility_conflict",
+                        "conflict": {"initialType": initial.inspection_type, "candidateType": competitor,
+                                     "reviewedType": resolved.inspection_type if resolved else "unknown"},
+                        "grounding": {"bbox": second_grounding.get("evidence_bbox"),
+                                      "distinguishingEvidence": second_grounding.get("distinguishing_evidence")}}
+                if resolved_ok:
+                    return resolved, meta
+                return IntentResult("unknown", 0.0, "unknown", "设施类型证据相互冲突，需补拍标牌或完整主体后确认", "image_conflict"), meta
             return parsed, {"latencyMs": latency_ms, "usage": response.usage, "error": "",
                             "grounding": {"bbox": grounding.get("evidence_bbox"),
                                           "distinguishingEvidence": grounding.get("distinguishing_evidence")}}

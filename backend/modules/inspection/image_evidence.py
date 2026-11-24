@@ -41,6 +41,38 @@ def candidate_regions(result: dict | None) -> list[dict]:
     return (distinct + repeated)[:24]
 
 
+def conflicting_facility_evidence(branch: str, subject_box, result: dict | None) -> str | None:
+    """Only flag coherent rival components at the selected subject's location.
+
+    This does not select a class: it requires a separate image-based resolution.
+    """
+    subject = normalized_box(subject_box)
+    if not subject:
+        return None
+
+    def overlaps(box):
+        intersection = max(0, min(box[2], subject[2]) - max(box[0], subject[0])) * max(
+            0, min(box[3], subject[3]) - max(box[1], subject[1]))
+        smaller = min((box[2] - box[0]) * (box[3] - box[1]),
+                      (subject[2] - subject[0]) * (subject[3] - subject[1]))
+        return intersection / smaller >= 0.5
+
+    names = {r["name"] for r in candidate_regions(result) if r["confidence"] >= 0.65 and overlaps(r["bbox"])}
+    connector = {"消防水泵接合器/本体", "消防水泵接合器/消防接口"}
+    outdoor = {"室外消火栓/消火栓栓体", "室外消火栓/消防接口"}
+    supply = {"消防供配电/消防设备控制柜", "消防供水设施/水泵控制柜/手动自动状态转换开关"}
+    alarm = {"火灾自动报警系统/火灾报警控制器", "火灾自动报警系统/火灾报警控制器/报警控制器显示器"}
+    for selected, alternative, required in (
+        ("outdoor_hydrant", "water_pump_connector", connector),
+        ("water_pump_connector", "outdoor_hydrant", outdoor),
+        ("fire_alarm_controller", "water_supply", supply),
+        ("water_supply", "fire_alarm_controller", alarm),
+    ):
+        if branch == selected and required <= names:
+            return alternative
+    return None
+
+
 def image_review_content(image: str, prompt: str, result: dict | None = None) -> list[dict]:
     regions = candidate_regions(result)
     text = prompt + "\n候选区域（可能误检；不可直接当作事实）：" + json.dumps(regions, ensure_ascii=False)

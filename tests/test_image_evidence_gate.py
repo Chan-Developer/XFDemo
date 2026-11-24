@@ -8,7 +8,7 @@ import pytest
 from PIL import Image
 
 from backend.modules.inspection.evidence_gate import render_evidence, review_image_evidence, validate_evidence
-from backend.modules.inspection.image_evidence import image_review_content, normalized_box
+from backend.modules.inspection.image_evidence import image_review_content, normalized_box, conflicting_facility_evidence
 from backend.modules.inspection.intent import resolve_intent
 from backend.modules.inspection.output_formatter import format_public_report
 
@@ -168,3 +168,32 @@ def test_pipeline_applies_evidence_gate_after_legacy_report_rules(monkeypatch):
     assert "结论：无法判断" in state["report"]
     assert "指针清晰位于绿色区域" not in state["report"]
     assert state["trace"]["stages"][-1]["name"] == "image_evidence_gate"
+
+
+def test_conflict_checks_only_the_selected_subject_region():
+    raw = {"detections": [{"className": name, "bboxNorm": [0.1, 0.1, 0.4, 0.4], "confidence": 0.9}
+                          for name in ("消防水泵接合器/本体", "消防水泵接合器/消防接口")]}
+    assert conflicting_facility_evidence("outdoor_hydrant", [0, 0, 0.5, 0.5], raw) == "water_pump_connector"
+    assert conflicting_facility_evidence("outdoor_hydrant", [0.6, 0.6, 1, 1], raw) is None
+    raw["detections"].pop()
+    assert conflicting_facility_evidence("outdoor_hydrant", [0, 0, 0.5, 0.5], raw) is None
+
+
+@pytest.mark.parametrize("second_type,expected", [("outdoor_hydrant", "unknown"),
+                                                 ("water_pump_connector", "water_pump_connector")])
+def test_coherent_conflicting_components_require_new_image_review(monkeypatch, second_type, expected):
+    monkeypatch.setenv("YOLO_MODE", "unified")
+    def answer(branch):
+        return SimpleNamespace(content=json.dumps({
+            "inspection_type": branch, "confidence": 0.9, "evidence": "主体的可见结构",
+            "identity_status": "confirmed", "evidence_bbox": [0.1, 0.1, 0.9, 0.9],
+            "distinguishing_evidence": "从原图核对的区分特征", "scope_hint": "outdoor",
+        }), usage={"total_tokens": 10})
+    model = Mock()
+    model.invoke.side_effect = [answer("outdoor_hydrant"), answer(second_type)]
+    raw = {"detections": [{"className": name, "bboxNorm": [0.1, 0.1, 0.9, 0.9], "confidence": 0.9}
+                          for name in ("消防水泵接合器/本体", "消防水泵接合器/消防接口")]}
+    intent, meta = resolve_intent(model, "", "image", detections=raw)
+    assert intent.inspection_type == expected
+    assert meta["usage"]["total_tokens"] == 20
+    assert model.invoke.call_count == 2
