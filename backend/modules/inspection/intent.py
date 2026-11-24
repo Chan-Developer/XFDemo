@@ -223,6 +223,8 @@ def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str
                     "不得仅因为候选标签而改判，也不得重复第一次判断作为证据。"
                     "单立柱、带盖侧接口、顶部手轮并不能单独排除水泵接合器；"
                     "盖帽遮住接口时不得臆测螺纹形式。不能凭空猜读标牌。"
+                    "若冲突类型同为fire_detector，则是位置冲突：第一次圈定的可能是灯具，"
+                    "须重新核对较小探测器候选的原图位置，不能仍把大圆灯圈作探测器。"
                     "若确实支持候选类型，请给出可见区分依据及原图区域；否则返回unknown等待人工确认。"
                     "仍使用前述JSON结构。"
                 )})
@@ -241,6 +243,7 @@ def resolve_intent(model: Any, query: str, image: str | None, explicit_task: str
                     and normalized_box(second_grounding.get("evidence_bbox")) is not None
                     and isinstance(second_grounding.get("distinguishing_evidence"), str)
                     and second_grounding["distinguishing_evidence"].strip()
+                    and not conflicting_facility_evidence(resolved.inspection_type, second_grounding.get("evidence_bbox"), detections)
                 )
                 meta = {"latencyMs": int((time.perf_counter() - started) * 1000), "usage": combined_usage,
                         "error": "" if resolved_ok else "unresolved_facility_conflict",

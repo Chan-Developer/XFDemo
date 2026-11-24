@@ -201,6 +201,7 @@ class InspectionAgent:
                 usage=route_review_usage,
             ))
             if reviewed_intent.inspection_type != "unknown":
+                route_meta["subjectBox"] = review_meta.get("grounding", {}).get("bbox")
                 intent = reviewed_intent
                 if intent.inspection_type in DETECTION_ONLY_TYPES:
                     raw = route_meta["unifiedResult"]
@@ -209,7 +210,7 @@ class InspectionAgent:
                     description_started = time.perf_counter()
                     structured, report, evidence_review, description_usage = review_image_evidence(
                         self.evidence_model, image, intent.inspection_type, intent.display_name,
-                        "", raw, observation_only=True,
+                        "", {**raw, "subjectBox": route_meta.get("subjectBox")}, observation_only=True,
                     )
                     usage = {key: route_review_usage.get(key, 0) + description_usage.get(key, 0)
                              for key in set(route_review_usage) | set(description_usage)}
@@ -353,7 +354,19 @@ class InspectionAgent:
             inspectionType=branch.key,
         )
         stage_started = time.perf_counter()
-        first = self.model.invoke(prepared["messages"])
+        try:
+            first = self.model.invoke(prepared["messages"])
+        except Exception as exc:
+            # The independent image reviewer can still inspect the original.
+            # Never fabricate an initial verdict when the local model is down.
+            stages.append(trace_stage("qwen_first", "初检服务不可用", stage_started,
+                                      status="warn", error=type(exc).__name__, usage={}))
+            emit_progress(progress_callback, stage="analysis", status="complete",
+                          label="已转入独立图像核验", detail="初检服务不可用，直接核验原图证据")
+            return self._finish_grounded_report(
+                prepared, branch, route_meta, yolo_result, "", "",
+                expected_scope, stages, route_review_usage, pipeline_started, progress_callback,
+            )
         raw_report = trim_output(strip_reasoning(first.content), self.settings.max_output_chars)
         # 多段报告中取主要报告
         raw_report = pick_primary_structured_report(raw_report)
@@ -647,10 +660,18 @@ class InspectionAgent:
         )
         final_report = apply_yolo_backstop(final_report, raw_report, yolo_result)
         final_report = enforce_report_scope(final_report, expected_scope)
+        return self._finish_grounded_report(
+            prepared, branch, route_meta, yolo_result, raw_report, final_report,
+            expected_scope, stages, usage, pipeline_started, progress_callback,
+        )
+
+    def _finish_grounded_report(self, prepared, branch, route_meta, yolo_result, raw_report,
+                                final_report, expected_scope, stages, usage,
+                                pipeline_started, progress_callback):
         stage_started = time.perf_counter()
         final_report, public_report, evidence_review, evidence_usage = review_image_evidence(
-            self.evidence_model, image, branch.key, expected_scope,
-            final_report, route_meta.get("unifiedResult", yolo_result),
+            self.evidence_model, prepared["image"], branch.key, expected_scope,
+            final_report, {**route_meta.get("unifiedResult", yolo_result), "subjectBox": route_meta.get("subjectBox")},
         )
         usage = merge_usage(usage, evidence_usage)
         stages.append(trace_stage(
@@ -660,7 +681,7 @@ class InspectionAgent:
         ))
         trace = {
             "version": "image-evidence-v4",
-            "inspectionType": intent.inspection_type,
+            "inspectionType": prepared["inspection_type"],
             "inspectionName": branch.name,
             "stages": stages,
             "summary": build_trace_summary(raw_report, final_report, yolo_result, stages),

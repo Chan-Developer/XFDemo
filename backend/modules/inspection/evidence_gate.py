@@ -152,7 +152,11 @@ def review_image_evidence(model: Any, image: str, branch: str, scope: str,
         f"需要核验的标签为：{allowed}。每个标签都输出一个check，"
         "supported表示异常成立，refuted表示图像明确排除该异常，uncertain表示无法判断。"
         "supported/refuted必须引用实际支持该项判断的observation id，不得借用无关位置或否定句作异常依据。"
-        "若只做组件描述，checks为空。最多8条观察，不逐字抄写设备编号。"
+        "若只做组件描述，checks为空。最多4条核心观察，每条不超过50字。"
+        "不描述材质、内部结构、型号、认证、无关背景，也不猜测两个设备之间的连线关系。"
+        "主体以确认区域为准，避免把旁边的照明灯作为探测器。"
+        f"主体确认区域（原图归一化坐标）：{detections.get('subjectBox')}。"
+        "所有bbox仅保留4位小数，不要输出计算表达式、注释或省略号。"
         '\n严格JSON：{"observations":[{"id":"e1","text":"位置+可见事实",'
         '"bbox":[0.1,0.1,0.5,0.5],"kind":"visual|reading|absence",'
         '"readable":false,"coverage_complete":false}],'
@@ -160,17 +164,28 @@ def review_image_evidence(model: Any, image: str, branch: str, scope: str,
         '"evidence_ids":["e1"],"readable":false,"coverage_complete":false}],'
         '"scope_complete":false}。scope_complete仅在本次检查范围全部可清楚核验时为true。'
     )
-    usage, error = {}, ""
+    usage, error, retry_count, excerpt = {}, "", 0, ""
     try:
-        response = model.invoke([{"role": "user", "content": image_review_content(image, prompt, detections)}])
+        messages = [{"role": "user", "content": image_review_content(image, prompt, detections)}]
+        response = model.invoke(messages)
         usage = response.usage
         data = extract_json_object(response.content)
         if data is None:
-            error = "invalid_evidence_json"
+            retry_count = 1
+            messages[0]["content"].append({"type": "text", "text": "上次输出无法作为JSON解析。请重新从原图核验，严格输出一个完整JSON对象；数值只能用十进制常数，禁止算式、注释、尾逗号及省略号。"})
+            response = model.invoke(messages)
+            usage = {key: (usage or {}).get(key, 0) + (response.usage or {}).get(key, 0)
+                     for key in set(usage or {}) | set(response.usage or {})}
+            data = extract_json_object(response.content)
+            if data is None:
+                error, excerpt = "invalid_evidence_json", response.content[:500] + response.content[-500:]
     except Exception:
         data, error = None, "evidence_review_unavailable"
     review = validate_evidence(data, allowed, detections)
     review["error"] = error
+    review["formatRetries"] = retry_count
+    if excerpt:
+        review["parseFailureExcerpt"] = excerpt
     review["removedDraftLabels"] = [label for label in labels_from_report(draft) if label not in review["labels"]]
     structured, public = render_evidence(review, scope, observation_only)
     return structured, public, review, usage

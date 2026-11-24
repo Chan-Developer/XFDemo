@@ -31,7 +31,7 @@ def candidate_regions(result: dict | None) -> list[dict]:
             continue
         if not box or not name or not math.isfinite(confidence) or confidence < 0.2:
             continue
-        candidates.append({"name": name, "bbox": box, "confidence": confidence})
+        candidates.append({"name": name, "bbox": [round(v, 4) for v in box], "confidence": round(confidence, 4)})
     candidates.sort(key=lambda item: item["confidence"], reverse=True)
     # Keep distinct component types ahead of repeated instances of one class.
     seen, distinct, repeated = set(), [], []
@@ -57,7 +57,12 @@ def conflicting_facility_evidence(branch: str, subject_box, result: dict | None)
                       (subject[2] - subject[0]) * (subject[3] - subject[1]))
         return intersection / smaller >= 0.5
 
-    names = {r["name"] for r in candidate_regions(result) if r["confidence"] >= 0.65 and overlaps(r["bbox"])}
+    regions = [r for r in candidate_regions(result) if r["confidence"] >= 0.65]
+    if branch == "fire_detector":
+        detectors = [r for r in regions if r["name"] == "火灾自动报警系统/点型火灾探测器"]
+        if detectors and not any(overlaps(r["bbox"]) for r in detectors):
+            return branch  # Same class name, but the VLM is describing a different object.
+    names = {r["name"] for r in regions if overlaps(r["bbox"])}
     connector = {"消防水泵接合器/本体", "消防水泵接合器/消防接口"}
     outdoor = {"室外消火栓/消火栓栓体", "室外消火栓/消防接口"}
     supply = {"消防供配电/消防设备控制柜", "消防供水设施/水泵控制柜/手动自动状态转换开关"}

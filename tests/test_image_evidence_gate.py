@@ -148,7 +148,8 @@ def test_grounded_route_accepts_specific_equipment_and_preserves_anchor(monkeypa
     assert resolve_intent(model, "", "image", detections={})[0].inspection_type == "unknown"
 
 
-def test_pipeline_applies_evidence_gate_after_legacy_report_rules(monkeypatch):
+@pytest.mark.parametrize("first_available", [True, False])
+def test_pipeline_applies_evidence_gate_after_legacy_report_rules(monkeypatch, first_available):
     from backend.modules.inspection import pipeline
     from backend.modules.inspection.intent import IntentResult
     monkeypatch.setenv("YOLO_MODE", "unified")
@@ -162,12 +163,16 @@ def test_pipeline_applies_evidence_gate_after_legacy_report_rules(monkeypatch):
     agent = object.__new__(pipeline.InspectionAgent)
     agent.settings = SimpleNamespace(max_output_chars=2000)
     agent.model = Mock(invoke=Mock(return_value=SimpleNamespace(content=draft, usage={})))
+    if not first_available:
+        agent.model.invoke.side_effect = ConnectionError("local model offline")
     agent.judge_model = Mock(invoke=Mock(return_value=SimpleNamespace(content=draft, usage={})))
     agent.evidence_model = Mock(invoke=Mock(return_value=SimpleNamespace(content="not json", usage={})))
     state = agent.invoke({"image": "data:image/jpeg;base64,test"})
     assert "结论：无法判断" in state["report"]
     assert "指针清晰位于绿色区域" not in state["report"]
     assert state["trace"]["stages"][-1]["name"] == "image_evidence_gate"
+    if not first_available:
+        agent.judge_model.invoke.assert_not_called()
 
 
 def test_conflict_checks_only_the_selected_subject_region():
@@ -197,3 +202,20 @@ def test_coherent_conflicting_components_require_new_image_review(monkeypatch, s
     assert intent.inspection_type == expected
     assert meta["usage"]["total_tokens"] == 20
     assert model.invoke.call_count == 2
+
+
+def test_detector_identity_must_refer_to_the_small_detector_not_another_lamp():
+    raw = {"detections": [{"className": "火灾自动报警系统/点型火灾探测器",
+                           "bboxNorm": [0.56, 0.47, 0.61, 0.52], "confidence": 0.9}]}
+    assert conflicting_facility_evidence("fire_detector", [0.49, 0.57, 0.56, 0.67], raw) == "fire_detector"
+    assert conflicting_facility_evidence("fire_detector", [0.55, 0.46, 0.62, 0.53], raw) is None
+
+
+def test_json_retry_requires_a_fresh_valid_image_review():
+    model = Mock()
+    model.invoke.side_effect = [SimpleNamespace(content="invalid", usage={"total_tokens": 2}),
+                               SimpleNamespace(content=json.dumps(review()), usage={"total_tokens": 3})]
+    _, _, result, usage = review_image_evidence(model, "image", "indoor_hydrant", "内部组件", "", {})
+    assert result["formatRetries"] == 1 and not result["error"]
+    assert result["labels"] == [RUST]
+    assert usage["total_tokens"] == 5
