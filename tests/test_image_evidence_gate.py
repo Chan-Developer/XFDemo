@@ -219,3 +219,24 @@ def test_json_retry_requires_a_fresh_valid_image_review():
     assert result["formatRetries"] == 1 and not result["error"]
     assert result["labels"] == [RUST]
     assert usage["total_tokens"] == 5
+
+
+def test_soft_hose_is_not_evidence_that_fire_hose_is_present():
+    label = "室内消火栓无消防水带"
+    data = review(obs=[observation(text="软管盘绕于卷盘上")], checks=[check(label, state="refuted")])
+    result = validate_evidence(data, [label], {})
+    assert result["verdict"] == "无法判断" and result["uncertain"] == [label]
+
+
+def test_unrelated_observation_cannot_support_an_anomaly():
+    data = review(obs=[observation(text="墙上贴有操作说明")])
+    assert validate_evidence(data, [RUST], {})["labels"] == []
+
+
+@pytest.mark.parametrize("context", ["product", "unknown", None])
+def test_product_or_partial_photos_cannot_prove_clear_access(context):
+    text = "灭火器置于推车架上，取用路径无障碍"
+    data = review(obs=[observation(text=text)], checks=[], capture_context=context)
+    result = validate_evidence(data, ["灭火器被遮挡或取用受限"], {})
+    assert text not in render_evidence(result, "灭火器")[1]
+    assert result["verdict"] == "无法判断"

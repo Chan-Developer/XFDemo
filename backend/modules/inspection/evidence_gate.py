@@ -13,6 +13,35 @@ from backend.modules.inspection.labels import APPEARANCE_LABELS, BRANCH_LABELS, 
 from backend.modules.inspection.parser import extract_json_object, labels_from_report
 
 
+# Require the cited observation to actually concern the checked component.
+# In particular, a hose reel's soft tube is not evidence of a fire hose.
+TARGET_TERMS = {
+    "室内消火栓手轮缺失": (("手轮",),),
+    "室内消火栓栓口方向错误": (("栓口", "接口", "出水口"), ("方向", "朝向")),
+    "室内消火栓无消防水带": (("水带",),),
+    "室内消火栓无消防水枪": (("水枪",),),
+    "室内消火栓消防接口缺失": (("接口", "栓口", "出水口"),),
+    "消防软管卷盘供水管道折弯严重": (("软管", "供水管"), ("折弯", "弯折", "压扁", "折痕")),
+    "室内消火栓无箱体": (("箱体", "箱壁", "箱底"),),
+    "室内消火栓箱锈蚀": (("箱",), ("锈", "腐蚀")),
+    "室内消火栓箱门缺失": (("箱门", "门体"),),
+    "室内消火栓箱门未清晰标注中文“消火栓”字样": (("箱门", "门面"), ("标识", "字样", "文字")),
+    "室内消火栓箱门标识模糊": (("箱门", "门面"), ("标识", "字样", "文字")),
+    "室内消火栓箱体或箱门被物品遮挡": (("箱",), ("遮挡", "挡住", "阻挡")),
+    "室内消火栓箱操作说明缺失或不清晰": (("操作说明", "使用说明", "说明图"),),
+    "室外消火栓本体缺失或无法确认": (("栓体", "消火栓"),),
+    "室外消火栓被遮挡或圈占": (("消火栓", "栓体"), ("遮挡", "圈占", "通道", "阻挡")),
+    "室外消火栓明显破损或锈蚀": (("栓体", "消火栓"), ("破损", "锈", "腐蚀", "变形")),
+    "室外消火栓标识缺失或不可辨": (("标识", "铭牌", "字样"),),
+    "灭火器缺失或数量不足": (("灭火器",),),
+    "灭火器压力指示异常": (("表盘", "指针", "压力"),),
+    "灭火器压力指示器不可辨": (("表盘", "指针", "压力"),),
+    "灭火器喷管或压把缺失损坏": (("喷管", "压把", "保险"),),
+    "灭火器瓶体明显破损或锈蚀": (("瓶体", "筒体"), ("破损", "锈", "腐蚀", "变形")),
+    "灭火器被遮挡或取用受限": (("灭火器",), ("遮挡", "取用", "通道", "阻挡")),
+}
+
+
 def scope_labels(branch: str, scope: str) -> list[str]:
     if branch == "indoor_hydrant":
         return APPEARANCE_LABELS if scope == "箱体外观" else INTERNAL_LABELS
@@ -54,6 +83,8 @@ def validate_evidence(data: Any, allowed: list[str], detections: dict) -> dict:
             reason = "absence_requires_complete_view"
         elif row.get("kind") == "absence" and row.get("coverage_complete") is not True:
             reason = "incomplete_view_cannot_prove_absence"
+        elif re.search(r"取用|通道|周边环境|摆放位置", text) and data.get("capture_context") != "onsite":
+            reason = "onsite_context_not_confirmed"
         if key in seen:
             observations.pop(key, None)
         seen.add(key)
@@ -77,6 +108,8 @@ def validate_evidence(data: Any, allowed: list[str], detections: dict) -> dict:
         linked = [observations[k] for k in refs if isinstance(k, str) and k in observations] if isinstance(refs, list) else []
         state = row.get("state")
         valid = bool(linked) and len(linked) == len(refs) and isinstance(state, str) and state in {"supported", "refuted"}
+        terms = TARGET_TERMS.get(label, ())
+        valid = valid and any(all(any(term in o["text"] for term in group) for group in terms) for o in linked)
         if state == "supported" and ("缺失" in label or "无消防" in label or "无箱体" in label or "数量不足" in label):
             valid = valid and row.get("coverage_complete") is True and any(o["kind"] == "absence" for o in linked)
         if label == "灭火器压力指示异常":
@@ -102,7 +135,8 @@ def validate_evidence(data: Any, allowed: list[str], detections: dict) -> dict:
     )
     return {"observations": list(observations.values()), "checks": list(checks.values()),
             "labels": confirmed, "uncertain": uncertain, "verdict": verdict,
-            "rejected": rejected, "scopeComplete": data.get("scope_complete") is True}
+            "rejected": rejected, "scopeComplete": data.get("scope_complete") is True,
+            "captureContext": data.get("capture_context") if data.get("capture_context") in ("onsite", "product", "unknown") else "unknown"}
 
 
 def render_evidence(review: dict, scope: str, observation_only: bool = False) -> tuple[str, str]:
@@ -145,10 +179,13 @@ def review_image_evidence(model: Any, image: str, branch: str, scope: str,
         "逐项观察对象、所在位置与可见状态，观察必须给出原图归一化bbox。"
         "不要把灯具当探测器，不猜读模糊表盘或铭牌，不从外观推断锈死、功能或运行状态，"
         "不推测取景外的通道环境、数量、尺寸或配置要求。文字和指针读数用kind=reading，"
+        "先判断capture_context：真实安装或使用现场为onsite，白底展示或商品宣传图为product，"
+        "局部特写或无法确认现场为unknown。product/unknown不能断言现场通道、取用条件或摆放位置。"
         "只有原始像素足以分辨才可readable=true；表盘绿色背景不等于指针在绿色区。"
         "缺失用kind=absence，只有应存放区域完整可见、无遮挡且确实为空才可coverage_complete=true。"
         "YOLO未检出不是缺失证据；部分照片不能证明全部齐全。"
         "每条观察只能描述一项事实，保持简短，不输出建议、法规或合规结论。"
+        "消防软管卷盘的软管不是消防水带，不能以软管在位排除水带缺失。"
         f"需要核验的标签为：{allowed}。每个标签都输出一个check，"
         "supported表示异常成立，refuted表示图像明确排除该异常，uncertain表示无法判断。"
         "supported/refuted必须引用实际支持该项判断的observation id，不得借用无关位置或否定句作异常依据。"
@@ -162,7 +199,7 @@ def review_image_evidence(model: Any, image: str, branch: str, scope: str,
         '"readable":false,"coverage_complete":false}],'
         '"checks":[{"label":"指定标签","state":"supported|refuted|uncertain",'
         '"evidence_ids":["e1"],"readable":false,"coverage_complete":false}],'
-        '"scope_complete":false}。scope_complete仅在本次检查范围全部可清楚核验时为true。'
+        '"scope_complete":false,"capture_context":"onsite|product|unknown"}。scope_complete仅在本次检查范围全部可清楚核验时为true。'
     )
     usage, error, retry_count, excerpt = {}, "", 0, ""
     try:
