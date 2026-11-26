@@ -47,7 +47,7 @@ def main():
         "codeRoot": str(Path(__file__).resolve().parents[2]),
         "sourceHashes": {name: hashlib.sha256((Path(__file__).resolve().parents[2] /
                           "backend/modules/inspection" / name).read_bytes()).hexdigest()
-                         for name in ("intent.py", "pipeline.py", "evidence_gate.py", "image_evidence.py", "pressure_evidence.py")},
+                         for name in ("intent.py", "pipeline.py", "evidence_gate.py", "image_evidence.py")},
         "model": settings.model, "judgeModel": settings.judge_model,
         "method": "InspectionAgent replay; no production history writes; route/contract checks are not human accuracy",
     }, ensure_ascii=False, indent=2))

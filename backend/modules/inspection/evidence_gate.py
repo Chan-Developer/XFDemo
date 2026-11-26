@@ -11,7 +11,6 @@ from typing import Any
 from backend.modules.inspection.image_evidence import image_review_content, normalized_box
 from backend.modules.inspection.labels import APPEARANCE_LABELS, BRANCH_LABELS, INTERNAL_LABELS
 from backend.modules.inspection.parser import extract_json_object, labels_from_report
-from backend.modules.inspection.pressure_evidence import PRESSURE_LABEL, review_pressure
 
 
 # Require the cited observation to actually concern the checked component.
@@ -225,24 +224,6 @@ def review_image_evidence(model: Any, image: str, branch: str, scope: str,
     except Exception:
         data, error = None, "evidence_review_unavailable"
     review = validate_evidence(data, allowed, detections)
-    if branch == "fire_extinguisher" and not error and PRESSURE_LABEL in review["uncertain"]:
-        pressure, pressure_usage, pressure_error = review_pressure(model, image, detections)
-        usage = {key: (usage or {}).get(key, 0) + pressure_usage.get(key, 0)
-                 for key in set(usage or {}) | set(pressure_usage)}
-        review["pressureReview"] = {"error": pressure_error, "resolved": bool(pressure)}
-        if pressure:
-            obs = pressure["observation"]
-            while any(o["id"] == obs["id"] for o in review["observations"]):
-                obs["id"] += "_detail"
-            review["observations"].append(obs)
-            for check in review["checks"]:
-                if check["label"] in (PRESSURE_LABEL, "灭火器压力指示器不可辨"):
-                    check.update(state=pressure["state"] if check["label"] == PRESSURE_LABEL else "refuted",
-                                 evidence_ids=[obs["id"]])
-            review["uncertain"] = [c["label"] for c in review["checks"] if c["state"] == "uncertain"]
-            review["labels"] = [c["label"] for c in review["checks"] if c["state"] == "supported"]
-            review["verdict"] = "不合规" if review["labels"] else (
-                "合规" if not review["uncertain"] and review["scopeComplete"] else "无法判断")
     review["error"] = error
     review["formatRetries"] = retry_count
     if excerpt:
