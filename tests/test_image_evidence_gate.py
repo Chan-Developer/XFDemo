@@ -11,6 +11,7 @@ from backend.modules.inspection.evidence_gate import render_evidence, review_ima
 from backend.modules.inspection.image_evidence import image_review_content, normalized_box, conflicting_facility_evidence
 from backend.modules.inspection.intent import resolve_intent
 from backend.modules.inspection.output_formatter import format_public_report
+from backend.modules.inspection.pressure_evidence import review_pressure
 
 
 MISSING = "室内消火栓无消防水枪"
@@ -252,3 +253,31 @@ def test_coordinates_are_kept_in_trace_not_product_prose():
     result = validate_evidence(review(obs=[observation(text="主体区域[0.1,0.2,0.5,0.6]内箱底可见锈斑")]), [RUST], {})
     assert result["observations"][0]["bbox"] == [0.1, 0.2, 0.5, 0.6]
     assert "[0.1" not in render_evidence(result, "内部组件")[1]
+
+
+def dial_fixture():
+    return {"imageWidth": 1000, "imageHeight": 1000, "detections": [{
+        "className": "灭火器/压力指示器", "bboxNorm": [0.1, 0.1, 0.5, 0.5], "confidence": 0.95}]}
+
+
+def dial_answer(**kwargs):
+    return {"readable": True, "band": "red", "confidence": 0.95,
+            "dial_bbox": [0.1, 0.1, 0.5, 0.5], "needle_tip": [0.3, 0.4], **kwargs}
+
+
+@pytest.mark.parametrize("changes", [{"readable": False}, {"readable": "true"},
+                                    {"needle_tip": [0.9, 0.9]}, {"band": "unknown"},
+                                    {"dial_bbox": [0, 0, 1, 1]}, {"confidence": float("nan")}])
+def test_pressure_specialist_cannot_guess_or_use_unrelated_region(changes):
+    model = Mock(invoke=Mock(return_value=SimpleNamespace(content=json.dumps(dial_answer(**changes)), usage={})))
+    assert review_pressure(model, "image", dial_fixture())[0] is None
+
+
+def test_clear_abnormal_dial_survives_other_unresolved_checks():
+    model = Mock()
+    model.invoke.side_effect = [SimpleNamespace(content=json.dumps({"observations": [], "checks": []}), usage={}),
+                               SimpleNamespace(content=json.dumps(dial_answer()), usage={})]
+    structured, public, result, _ = review_image_evidence(model, "image", "fire_extinguisher", "灭火器", "", dial_fixture())
+    assert result["labels"] == [PRESSURE]
+    assert "结论：不合规" in structured and "红色区域" in public
+    assert result["uncertain"]
