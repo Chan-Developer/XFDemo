@@ -240,3 +240,15 @@ def test_product_or_partial_photos_cannot_prove_clear_access(context):
     result = validate_evidence(data, ["灭火器被遮挡或取用受限"], {})
     assert text not in render_evidence(result, "灭火器")[1]
     assert result["verdict"] == "无法判断"
+
+
+def test_self_contradictory_appearance_is_not_rendered():
+    data = review(obs=[observation(text="红色手轮位于阀体顶部，完整可见，呈黑色圆形结构")])
+    result = validate_evidence(data, [RUST], {})
+    assert not result["observations"]
+
+
+def test_coordinates_are_kept_in_trace_not_product_prose():
+    result = validate_evidence(review(obs=[observation(text="主体区域[0.1,0.2,0.5,0.6]内箱底可见锈斑")]), [RUST], {})
+    assert result["observations"][0]["bbox"] == [0.1, 0.2, 0.5, 0.6]
+    assert "[0.1" not in render_evidence(result, "内部组件")[1]

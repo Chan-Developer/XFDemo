@@ -85,6 +85,8 @@ def validate_evidence(data: Any, allowed: list[str], detections: dict) -> dict:
             reason = "incomplete_view_cannot_prove_absence"
         elif re.search(r"取用|通道|周边环境|摆放位置", text) and data.get("capture_context") != "onsite":
             reason = "onsite_context_not_confirmed"
+        elif (colors := re.search(r"^(红|黑|白|灰|蓝|黄|绿|银)色[^，；。]*?[，,].*?呈(红|黑|白|灰|蓝|黄|绿|银)色", text)) and colors[1] != colors[2]:
+            reason = "contradictory_appearance_claim"
         if key in seen:
             observations.pop(key, None)
         seen.add(key)
@@ -140,7 +142,10 @@ def validate_evidence(data: Any, allowed: list[str], detections: dict) -> dict:
 
 
 def render_evidence(review: dict, scope: str, observation_only: bool = False) -> tuple[str, str]:
-    observations = {row["id"]: row for row in review["observations"]}
+    # Numeric anchors stay in the trace; the report uses readable observations.
+    observations = {row["id"]: {**row, "text": re.sub(
+        r"(?:主体区域|区域|原图坐标)?\s*\[\s*\d[\d.,\s]*\]\s*(?:内)?", "", row["text"]
+    ).strip()} for row in review["observations"]}
     lines = []
     used = set()
     for check in review["checks"]:
